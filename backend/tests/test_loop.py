@@ -600,25 +600,31 @@ def test_loop_submit_dossier_fails_twice_terminates_with_failed_status():
 
 
 def test_loop_run_metadata_is_injected_by_loop():
-    """run.model, cost_usd and turns are overwritten by loop with actual values."""
+    """run.model, cost_usd, turns, and generated_at are overwritten with actual loop values."""
+    from datetime import datetime, timezone
+
     from app.tools.inventory import AGENT_MODEL
 
     dossier_data = _valid_dossier_dict()
     dossier_data["run"]["model"] = "wrong-model-from-llm"
     dossier_data["run"]["cost_usd"] = 999.0
     dossier_data["run"]["turns"] = 999
+    dossier_data["generated_at"] = "2020-01-01T00:00:00+00:00"
 
     submit_block = _FakeToolUseBlock(id="sub1", name="submit_dossier", input=dossier_data)
     responses = [_FakeResponse(stop_reason="tool_use", content=[submit_block])]
 
+    before = datetime.now(tz=timezone.utc)
     with _patch_client(responses):
         result = run("AAPL")
+    after = datetime.now(tz=timezone.utc)
 
     assert result.terminated_by == "submit_dossier"
     assert result.dossier is not None
     assert result.dossier.run.model == AGENT_MODEL
-    assert result.dossier.run.turns == 1  # actual turn count
-    assert result.dossier.run.cost_usd != 999.0  # replaced with actual cost
+    assert result.dossier.run.turns == 1
+    assert result.dossier.run.cost_usd != 999.0
+    assert before <= result.dossier.generated_at <= after
 
 
 # ---------------------------------------------------------------------------
@@ -626,23 +632,52 @@ def test_loop_run_metadata_is_injected_by_loop():
 # ---------------------------------------------------------------------------
 
 def test_get_market_data_timeout_returns_recoverable_error():
-    """A yfinance call that hangs past the timeout returns a recoverable error."""
+    """A yfinance call that hangs past the timeout returns a recoverable error without blocking."""
     from concurrent.futures import TimeoutError as FuturesTimeoutError
-    from concurrent.futures import ThreadPoolExecutor as RealTPE
 
     class _TimingOutExecutor:
-        """Context-manager executor whose futures always raise TimeoutError."""
-        def __enter__(self):
-            return self
-        def __exit__(self, *args):
-            return False
+        """Executor whose futures raise TimeoutError; shutdown is a no-op."""
         def submit(self, fn, *args, **kwargs):  # noqa: ARG002
             future = MagicMock()
             future.result.side_effect = FuturesTimeoutError()
             return future
+        def shutdown(self, wait=True, **kwargs):
+            pass  # must not block
 
     with patch("app.tools.client.ThreadPoolExecutor", return_value=_TimingOutExecutor()):
         result = _get_market_data({"ticker": "AAPL"})
 
     assert "error" in result.json_response
     assert result.json_response["recoverable"] is True
+
+
+def test_get_market_data_price_zero_is_not_discarded():
+    """A valid price of 0 must be returned, not silently dropped by a falsy `or`."""
+    info_with_zero_price = {**_MOCK_AAPL_INFO, "currentPrice": 0, "regularMarketPrice": 0}
+    with patch("yfinance.Ticker") as mock_ticker_cls:
+        mock_ticker_cls.return_value.info = info_with_zero_price
+        result = _get_market_data({"ticker": "HALT"})
+
+    # price=0 is a valid value for a halted/suspended stock; must not be silently discarded.
+    assert result.json_response.get("price") == pytest.approx(0.0)
+    assert "error" not in result.json_response
+
+
+def test_loop_generated_at_is_injected_by_loop():
+    """generated_at in the dossier is overwritten by the loop with the actual run time."""
+    from datetime import datetime, timezone
+
+    dossier_data = _valid_dossier_dict()
+    dossier_data["generated_at"] = "2020-01-01T00:00:00+00:00"  # stale / hallucinated
+
+    submit_block = _FakeToolUseBlock(id="sub1", name="submit_dossier", input=dossier_data)
+    responses = [_FakeResponse(stop_reason="tool_use", content=[submit_block])]
+
+    before = datetime.now(tz=timezone.utc)
+    with _patch_client(responses):
+        result = run("AAPL")
+    after = datetime.now(tz=timezone.utc)
+
+    assert result.dossier is not None
+    assert result.dossier.generated_at >= before
+    assert result.dossier.generated_at <= after

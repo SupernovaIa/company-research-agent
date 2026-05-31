@@ -26,21 +26,6 @@ TERMINAL_TOOL = "submit_dossier"
 # Timeout for a single yfinance network call (seconds).
 _YFINANCE_TIMEOUT_S = 10
 
-# yfinance Ticker.info keys → MarketData field names.
-_INFO_FIELD_MAP = {
-    "currentPrice": "price",
-    "regularMarketPrice": "price",  # fallback if currentPrice absent
-    "currency": "currency",
-    "regularMarketChangePercent": "change_pct",
-    "marketCap": "market_cap",
-    "trailingPE": "pe_ratio",
-    "forwardPE": "forward_pe",
-    "trailingEps": "eps",
-    "dividendYield": "dividend_yield",
-    "fiftyTwoWeekHigh": "week52_high",
-    "fiftyTwoWeekLow": "week52_low",
-}
-
 
 @dataclass
 class ToolResult:
@@ -92,8 +77,11 @@ def _get_market_data(input_data: dict) -> ToolResult:
 
     def _fetch() -> dict:
         info = yf.Ticker(ticker).info
-        # Resolve price: prefer currentPrice; fall back to regularMarketPrice.
-        price = info.get("currentPrice") or info.get("regularMarketPrice")
+        # Prefer currentPrice; fall back to regularMarketPrice. Use explicit
+        # None checks — `or` would silently discard a legitimate price of 0.
+        price = info.get("currentPrice")
+        if price is None:
+            price = info.get("regularMarketPrice")
         if price is None:
             raise ValueError(f"no price data returned for {ticker!r}")
         return {
@@ -112,24 +100,27 @@ def _get_market_data(input_data: dict) -> ToolResult:
             "source": "Yahoo Finance",
         }
 
+    # shutdown(wait=False) in the finally so a timed-out or failed _fetch()
+    # thread does not block the caller while the OS socket drains.
+    executor = ThreadPoolExecutor(max_workers=1)
     try:
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_fetch)
+        future = executor.submit(_fetch)
+        try:
             data = future.result(timeout=_YFINANCE_TIMEOUT_S)
+        except FuturesTimeoutError:
+            logger.warning("get_market_data timed out for %s", ticker)
+            return ToolResult(
+                json_response={
+                    "error": f"Market data request timed out after {_YFINANCE_TIMEOUT_S}s.",
+                    "recoverable": True,
+                }
+            )
         return ToolResult(json_response=data)
-    except FuturesTimeoutError:
-        logger.warning("get_market_data timed out for %s", ticker)
-        return ToolResult(
-            json_response={
-                "error": f"Market data request timed out after {_YFINANCE_TIMEOUT_S}s.",
-                "recoverable": True,
-            }
-        )
     except Exception as exc:
         logger.warning("get_market_data failed for %s: %s", ticker, exc)
-        return ToolResult(
-            json_response={"error": str(exc), "recoverable": True}
-        )
+        return ToolResult(json_response={"error": str(exc), "recoverable": True})
+    finally:
+        executor.shutdown(wait=False)
 
 
 def _submit_dossier(input_data: dict) -> ToolResult:

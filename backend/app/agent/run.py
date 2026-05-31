@@ -88,11 +88,19 @@ def main() -> int:
         )
         return 0
     else:
-        print(
-            "No dossier produced. "
-            "The loop may have hit the turn limit without calling submit_dossier.",
-            file=sys.stderr,
+        _reasons = {
+            "submit_dossier_failed": (
+                "submit_dossier was called but failed schema validation twice. "
+                "Check the validation errors above."
+            ),
+            "end_turn": "The model stopped without calling submit_dossier.",
+            "hard_limit": "The loop hit the turn limit without calling submit_dossier.",
+        }
+        reason = _reasons.get(
+            result.terminated_by,
+            f"Loop ended with reason: {result.terminated_by!r}.",
         )
+        print(f"No dossier produced. {reason}", file=sys.stderr)
         return 1
 
 

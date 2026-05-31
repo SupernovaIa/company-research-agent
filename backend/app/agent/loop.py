@@ -16,6 +16,7 @@ import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -242,18 +243,20 @@ def run(
                         result = results[tu.id]
                         submit_attempts += 1
                         if result.success and result.dossier is not None:
-                            # Overwrite run metadata with actual loop values.
-                            # The model self-reports these fields but its estimates
-                            # are unreliable; the loop has the ground truth.
-                            patched_run = result.dossier.run.model_copy(
-                                update={
-                                    "model": AGENT_MODEL,
-                                    "cost_usd": total_cost,
-                                    "turns": turn,
-                                }
-                            )
+                            # Overwrite loop-authoritative fields. The model
+                            # self-reports these but its estimates are unreliable;
+                            # the loop has the ground truth for all four.
                             dossier = result.dossier.model_copy(
-                                update={"run": patched_run}
+                                update={
+                                    "generated_at": datetime.now(tz=timezone.utc),
+                                    "run": result.dossier.run.model_copy(
+                                        update={
+                                            "model": AGENT_MODEL,
+                                            "cost_usd": total_cost,
+                                            "turns": turn,
+                                        }
+                                    ),
+                                }
                             )
                             terminated_by = "submit_dossier"
                         elif submit_attempts > 1:
