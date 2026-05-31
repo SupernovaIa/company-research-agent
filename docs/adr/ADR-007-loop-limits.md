@@ -1,6 +1,6 @@
 # ADR-007: Límites del loop, tope de turnos y presupuesto
 
-**Estado:** aceptado (firmado en block-B 2026-05-31; se implementa en Fase 3, block-E)
+**Estado:** aceptado (firmado en block-B 2026-05-31; topes provisionales implementados en block-C; recalibración definitiva en block-E)
 **Fecha:** 2026-05-31
 **Tags:** loop, guardrails, coste, presupuesto
 
@@ -24,6 +24,8 @@ El loop de tool use puede divergir. Sin un tope de turnos y sin un presupuesto p
 ## Decisión
 
 Opción C. Turnos típicos esperados de 8 a 12; tope blando (soft limit) en torno a 15 y tope duro (hard limit) entre 20 y 25; presupuesto por ejecución de 0,30 a 0,80 dólares como rango de arranque con Claude Sonnet 4.6. Estos números son provisionales: se fijan al construir el loop (block-E) con valores de arranque y se recalibran contra la distribución real del set de evaluación cuando exista (block-H e iteración). El tope de turnos se sitúa un poco por encima del p95 de turnos por tarea, y el presupuesto sobre el p95 de coste por ejecución más un margen.
+
+**Nota block-C (2026-05-31):** los topes provisionales (HARD=20, SOFT=15) se implementan ya en block-C para cumplir el criterio de aceptación de Spec 03 y poder hacer una corrida real controlada. Se leen de `AGENT_MAX_TURNS` en el `.env` para poder ajustarlos sin tocar el código. La recalibración definitiva basada en datos del set de evaluación queda pendiente para block-E, donde los valores de arranque se sustituyen por el p95 + margen observado. Spec 03 y este ADR no coincidían en la fase de implementación de los topes: Spec 03 los incluye como criterio de block-C, este ADR los situaba en block-E. Resolución: block-C añade los topes provisionales y configura el mecanismo; block-E recalibra los números.
 
 Mecánica del corte: un contador en el cliente cuenta turnos y suma tokens convertidos a dólares con el rate card del modelo. Al llegar a cualquiera de los dos límites, se fuerza la respuesta final con un mensaje al modelo (ya no puedes llamar más tools, redacta el dossier con lo que tienes) o se devuelve error al usuario.
 

@@ -19,10 +19,13 @@ from __future__ import annotations
 
 from app.dossier.models import dossier_json_schema
 
-# Agent model tier and guardrail classifier (ADR-001). The dated, pinned model
-# id is anchored when the loop is built; the tier is fixed here.
+# Agent model (ADR-001, ADR-010).
+# claude-sonnet-4-6 is the current stable alias for the Sonnet 4.6 tier.
+# Anthropic has not released a dated snapshot for this model yet; pin to the
+# dated version (e.g. "claude-sonnet-4-6-YYYYMMDD") when one becomes available.
+# Guardrail classifier uses the dated Haiku 4.5 snapshot (pinned 2025-10-01).
 AGENT_MODEL = "claude-sonnet-4-6"
-GUARDRAIL_MODEL = "claude-haiku-4-5"
+GUARDRAIL_MODEL = "claude-haiku-4-5-20251001"
 
 # --- Server tools (resolved by Anthropic; no client implementation) ----------
 

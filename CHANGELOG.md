@@ -10,6 +10,41 @@ Próximas entradas por sesión.
 
 ---
 
+## [block-C] - 2026-05-31
+
+### Añadido
+
+- **Loop de tool use** (`backend/app/agent/loop.py`): implementación a mano sobre el SDK de Anthropic (ADR-010). Ciclo `messages.create → stop_reason → tool_result`, tope blando (`HARD-5`) y duro (`AGENT_MAX_TURNS`, default 20) leídos de settings, tool calls paralelas con `ThreadPoolExecutor`. Helper `_extract_client_tool_uses` itera por `block.type` y maneja `text`, `tool_use`, `server_tool_use` y `thinking` sin asumir `content[0]`. Cache de system prompt y tools con `cache_control: ephemeral` en el último bloque estable.
+- **CLI de research** (`backend/app/agent/run.py`): `python -m app.agent.run --ticker <TICKER> [-v]`. Callback `on_turn` por turno para futura integración SSE en serving.
+- **Dispatch de client tools** (`backend/app/tools/client.py`): `dispatch_client_tool` enruta `get_market_data` y `submit_dossier`. Stubs funcionales: `get_market_data` con thin wrapper yfinance (block-D añade error handling y retries), `submit_dossier` con validación Pydantic mínima (block-D añade guardrail classifier y retry ADR-006).
+- **Config module** (`backend/app/config.py`): pydantic-settings carga el `.env` de la raíz del repo de forma resoluble desde cualquier CWD; `loop.py` y `tracer.py` consumen `settings` en lugar de `os.environ.get` directamente.
+- **Tracer Langfuse** (`backend/app/observability/tracer.py`): null-safe, reescrito para la API de Langfuse v4 (`start_observation` / `start_as_current_observation` sobre OTel). Una traza por ejecución, un span de generación por turno con `usage_details` y `cost_details`. Usa `base_url` (v4); fallback a `langfuse_host` (legacy).
+- **System prompt** (`prompts/system_prompt_v1.md`): externalizado de `inventory.py` (criterio de aceptación de Spec 02). Escrito para el modelo en inglés, versionado.
+- **Tests del loop** (`backend/tests/test_loop.py`): 16 casos con SDK mockeado cubriendo `end_turn`, `tool_use → end_turn`, `submit_dossier` válido, `submit_dossier` inválido (reintento), tope duro, inyección de mensaje de tope blando, paralelo de dos tool calls, bloque `thinking`, callback `on_turn`, y bloques `server_tool_use` ignorados.
+- Dependencias añadidas al proyecto: `anthropic>=0.49`, `langfuse>=2.0`, `yfinance>=0.2`.
+
+### Cambiado
+
+- `backend/app/tools/inventory.py`: `GUARDRAIL_MODEL` pineado a `claude-haiku-4-5-20251001` (snapshot con fecha disponible en el SDK). Comentario de `AGENT_MODEL` actualizado: `claude-sonnet-4-6` es el alias estable actual; Anthropic no ha publicado snapshot con fecha para Sonnet 4.6 todavía.
+- `docs/adr/ADR-007-loop-limits.md`: estado actualizado a "topes provisionales implementados en block-C; recalibración definitiva en block-E". Nota añadida sobre la incoherencia entre Spec 03 (topes en block-C) y ADR-007 (en block-E) y su resolución: block-C añade los topes provisionales configurables desde el `.env`; block-E recalibra los números con datos del eval set.
+- `backend/app/agent/__init__.py` y `backend/app/observability/__init__.py`: exportan los símbolos públicos del módulo.
+
+### Decisiones documentadas
+
+- Stubs de client tools en block-C: implementaciones mínimas funcionales para correr el loop end-to-end. Producción (error handling, retries, guardrail) en block-D.
+- Langfuse v4: API de `start_observation` sobre OTel; `base_url` preferido. Incompatible con v2/v3 (`.trace()` eliminado).
+- `AGENT_MODEL` sin fecha: `claude-sonnet-4-6` es el ID correcto a fecha de block-C; pinear snapshot con fecha cuando Anthropic la publique.
+
+### Notas
+
+- Corrida real SHOP: 2 turnos, ~$0.08–0.10 USD por ejecución con Sonnet 4.6, `terminated_by=submit_dossier`, dossier Pydantic validado en vivo.
+- Cache hit confirmado en el 3er run: `cache_read=7.303 tok` (turn 1) y `cache_read=275.997 tok` (turn 2); `cache_creation=0` en los runs posteriores al primero.
+- 3 trazas visibles en Langfuse Cloud con spans anidados por turno.
+- Suite completa: 36 passed (16 nuevos del loop + 20 previos de schema e inventario).
+- Coste de la sesión: ~$0.30 USD en 3 corridas reales.
+
+---
+
 ## [block-B] - 2026-05-31
 
 ### Añadido
