@@ -1,8 +1,4 @@
-"""Client tool dispatch and minimal stub implementations (Spec 03).
-
-Block-C scope: dispatch routing + enough implementation to run the loop end-to-end.
-Block-D replaces these stubs with production implementations: yfinance error handling,
-guardrails on submit_dossier (retry logic, output classifier), and Langfuse spans.
+"""Client tool dispatch and production implementations (Spec 02, Spec 05).
 
 The distinction between client tools and server tools (ADR-003, ADR-005, ADR-011):
 - Client tools  → this module executes them and returns a tool_result.
@@ -13,10 +9,11 @@ The distinction between client tools and server tools (ADR-003, ADR-005, ADR-011
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
 
+import yfinance as yf
 from pydantic import ValidationError
 
 from app.dossier.models import CompanyDossier
@@ -25,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 # Name of the tool that terminates the loop (ADR-006).
 TERMINAL_TOOL = "submit_dossier"
+
+# Timeout for a single yfinance network call (seconds).
+_YFINANCE_TIMEOUT_S = 10
 
 
 @dataclass
@@ -59,53 +59,77 @@ def dispatch_client_tool(name: str, input_data: dict) -> ToolResult:
 
 
 # ---------------------------------------------------------------------------
-# Stub implementations — replaced by production implementations in block-D.
+# Production implementations (block-D)
 # ---------------------------------------------------------------------------
 
 def _get_market_data(input_data: dict) -> ToolResult:
-    """Minimal market data stub for block-C.
+    """Fetch structured market data for a ticker via yfinance (ADR-004).
 
-    Attempts a basic yfinance call if the library is available.
-    Returns a recoverable error otherwise so the model falls back to web search.
-    Block-D adds full error handling, timeouts, and Langfuse spans.
+    Returns all MarketData fields; fields with no datum are null. On any provider
+    failure returns {"error": ..., "recoverable": true} so the model can fall back
+    to web search without breaking the loop (Spec 02).
     """
-    ticker = input_data.get("ticker", "")
-    try:
-        import yfinance as yf  # optional dep in block-C
+    ticker = input_data.get("ticker", "").strip().upper()
+    if not ticker:
+        return ToolResult(
+            json_response={"error": "ticker is required", "recoverable": False}
+        )
 
-        info = yf.Ticker(ticker).fast_info
-        return ToolResult(
-            json_response={
-                "ticker": ticker,
-                "price": getattr(info, "last_price", None),
-                "currency": getattr(info, "currency", None),
-                "market_cap": getattr(info, "market_cap", None),
-                "week52_high": getattr(info, "year_high", None),
-                "week52_low": getattr(info, "year_low", None),
-                "source": "yfinance",
-                "as_of": datetime.now(tz=timezone.utc).isoformat(),
-            }
-        )
-    except ImportError:
-        logger.debug("yfinance not installed; returning recoverable error for %s", ticker)
-        return ToolResult(
-            json_response={
-                "error": "Market data provider not available in this build phase.",
-                "recoverable": True,
-            }
-        )
+    def _fetch() -> dict:
+        info = yf.Ticker(ticker).info
+        # Prefer currentPrice; fall back to regularMarketPrice. Use explicit
+        # None checks — `or` would silently discard a legitimate price of 0.
+        price = info.get("currentPrice")
+        if price is None:
+            price = info.get("regularMarketPrice")
+        if price is None:
+            raise ValueError(f"no price data returned for {ticker!r}")
+        return {
+            "ticker": ticker,
+            "price": float(price),
+            "currency": info.get("currency"),
+            "change_pct": _to_float(info.get("regularMarketChangePercent")),
+            "market_cap": _to_float(info.get("marketCap")),
+            "pe_ratio": _to_float(info.get("trailingPE")),
+            "forward_pe": _to_float(info.get("forwardPE")),
+            "eps": _to_float(info.get("trailingEps")),
+            "dividend_yield": _to_float(info.get("dividendYield")),
+            "week52_high": _to_float(info.get("fiftyTwoWeekHigh")),
+            "week52_low": _to_float(info.get("fiftyTwoWeekLow")),
+            "as_of": datetime.now(tz=timezone.utc).isoformat(),
+            "source": "Yahoo Finance",
+        }
+
+    # shutdown(wait=False) in the finally so a timed-out or failed _fetch()
+    # thread does not block the caller while the OS socket drains.
+    executor = ThreadPoolExecutor(max_workers=1)
+    try:
+        future = executor.submit(_fetch)
+        try:
+            data = future.result(timeout=_YFINANCE_TIMEOUT_S)
+        except FuturesTimeoutError:
+            logger.warning("get_market_data timed out for %s", ticker)
+            return ToolResult(
+                json_response={
+                    "error": f"Market data request timed out after {_YFINANCE_TIMEOUT_S}s.",
+                    "recoverable": True,
+                }
+            )
+        return ToolResult(json_response=data)
     except Exception as exc:
         logger.warning("get_market_data failed for %s: %s", ticker, exc)
-        return ToolResult(
-            json_response={"error": str(exc), "recoverable": True}
-        )
+        return ToolResult(json_response={"error": str(exc), "recoverable": True})
+    finally:
+        executor.shutdown(wait=False)
 
 
 def _submit_dossier(input_data: dict) -> ToolResult:
-    """Minimal submit_dossier for block-C: validate schema and signal loop termination.
+    """Validate the dossier schema and signal loop termination (ADR-006, Spec 05).
 
-    Block-D adds: retry logic on validation failure, output guardrail classifier,
-    and Langfuse span.
+    Returns success=True on valid input. On ValidationError returns a detailed
+    error so the loop can feed it back to the model for one retry (ADR-006).
+    Unexpected errors are caught and returned as non-recoverable to avoid crashing
+    the ThreadPoolExecutor thread.
     """
     try:
         dossier = CompanyDossier.model_validate(input_data)
@@ -124,7 +148,7 @@ def _submit_dossier(input_data: dict) -> ToolResult:
             json_response={
                 "success": False,
                 "error": str(exc),
-                "hint": "Fix the validation errors and call submit_dossier again.",
+                "hint": "Fix ALL validation errors listed above and call submit_dossier again.",
             }
         )
     except Exception as exc:
@@ -139,3 +163,13 @@ def _submit_dossier(input_data: dict) -> ToolResult:
                 "recoverable": False,
             }
         )
+
+
+def _to_float(value) -> float | None:
+    """Coerce a yfinance value to float, returning None for missing/invalid data."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

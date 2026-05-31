@@ -4,42 +4,37 @@
 
 ## Sesión actual
 
-**Sesión:** block-C
+**Sesión:** block-D
 **Estado:** gate_pending
-**Fecha apertura:** 2026-05-31 19:40
-**Última actualización:** 2026-05-31 20:50
+**Fecha apertura:** 2026-05-31
+**Última actualización:** 2026-05-31 21:35
 
 ## Objetivo de la sesión
 
-Implementar el loop de tool use a mano sobre el SDK de Anthropic, el CLI de research y la instrumentación mínima de Langfuse. Las client tools van como stubs funcionales en esta fase; la implementación completa de producción es block-D.
+Completar las implementaciones de producción de las client tools: `get_market_data` con cobertura completa de `MarketData` vía yfinance y `submit_dossier` con retry limitado (ADR-006). Inyección de metadatos reales de la ejecución en `run`. Aceptar Spec 05.
 
 ## Próxima acción concreta
 
-Abrir la PR de `feat/loop` a `main` y esperar revisión humana (merge squash + tag `03-block-C`). Siguiente bloque: block-D (client tools de producción: `get_market_data` completo con yfinance + error handling, y `submit_dossier` con guardrail classifier y retry logic per ADR-006).
+Abrir la PR de `feat/data-output` a `main` y esperar revisión humana (merge squash + tag `04-block-D`). Siguiente bloque: block-E (guardrails operativos: presupuesto por ejecución, backoff y reintentos por tool, rate limiting en el endpoint, clasificador de output Haiku).
 
 ## Pendientes en esta sesión
 
-- [ ] Merge (squash) de la PR a `main` y tag `03-block-C` (acción humana).
+- [ ] Merge (squash) de la PR a `main` y tag `04-block-D` (acción humana).
 
 ## Completado en esta sesión
 
-- [x] Loop de tool use a mano sobre el SDK (`backend/app/agent/loop.py`): `messages.create → stop_reason → tool_result`, tope blando (SOFT=hard-5) y duro (HARD=20 desde settings), tool calls paralelas con `ThreadPoolExecutor`, helper `_extract_client_tool_uses` que itera por `block.type` (maneja `text`, `tool_use`, `server_tool_use`, `thinking`), señal de terminación en `submit_dossier`.
-- [x] CLI `python -m app.agent.run --ticker <TICKER>` con callback `on_turn` por turno (`backend/app/agent/run.py`).
-- [x] Dispatch de client tools (`backend/app/tools/client.py`): stubs funcionales de `get_market_data` (yfinance thin wrapper) y `submit_dossier` (validación Pydantic mínima). Paralelo con `ThreadPoolExecutor`.
-- [x] Tracer Langfuse null-safe (`backend/app/observability/tracer.py`), adaptado a la API de Langfuse v4 (`start_observation` / `start_as_current_observation`); `base_url` preferido sobre `host` (legacy).
-- [x] Config module (`backend/app/config.py`): pydantic-settings carga el `.env` desde la raíz del repo de forma resoluble desde cualquier CWD; `loop.py` y `tracer.py` leen de `settings`.
-- [x] System prompt externalizado a `prompts/system_prompt_v1.md` (criterio Spec 02).
-- [x] Dependencias añadidas: `anthropic>=0.49`, `langfuse>=2.0`, `yfinance>=0.2`.
-- [x] Tests: 16 casos nuevos del loop (SDK mockeado) + 36 en total, todos verdes.
-- [x] Corrida real SHOP: 2 turnos, ~$0.075–0.105 USD, `terminated_by=submit_dossier`, dossier Pydantic validado.
-- [x] Cache hit confirmado en el 3er run: `cache_read=7.303 tok` (turn 1) y `cache_read=275.997 tok` (turn 2), `cache_created=0` (turnos posteriores al 1er run).
-- [x] Trazas en Langfuse: 3 ejecuciones visibles con spans anidados por turno.
-- [x] ADR-007 actualizado: constancia de que los topes son provisionales en block-C y se recalibran en block-E; incoherencia con Spec 03 documentada y resuelta.
-- [x] Fix: `GUARDRAIL_MODEL` pineado a `claude-haiku-4-5-20251001` (versión con fecha disponible en el SDK). `AGENT_MODEL = "claude-sonnet-4-6"` sin fecha (Anthropic no ha publicado snapshot con fecha para este tier todavía); comentario actualizado.
+- [x] `get_market_data` de producción (`backend/app/tools/client.py`): usa `yf.Ticker.info` para obtener todos los campos de `MarketData` (price, currency, change_pct, market_cap, pe_ratio, forward_pe, eps, dividend_yield, week52_high, week52_low, as_of, source). Campos sin dato → `null`. Timeout de 10 s con `ThreadPoolExecutor.future.result(timeout=...)`. Error como dato con `recoverable=True`.
+- [x] `submit_dossier` con retry limitado (ADR-006): un solo reintento permitido. Si falla por segunda vez el loop termina con `terminated_by="submit_dossier_failed"` en lugar de continuar indefinidamente.
+- [x] Inyección de metadatos reales en `run`: el loop sobreescribe `run.model`, `run.cost_usd` y `run.turns` con los valores reales de la ejecución (el modelo los auto-reporta de forma poco fiable).
+- [x] `terminated_by` ampliado con `"submit_dossier_failed"` en `LoopResult`.
+- [x] `_to_float` helper para coerción null-safe de los valores de yfinance.
+- [x] Spec 05 (`specs/05-structured-output.md`) pasada a estado **aceptada**.
+- [x] Tests: 12 nuevos casos (48 en total, todos verdes). Nuevos: todos los campos de `MarketData`, ticker inválido → error recuperable, ticker vacío → error no recuperable, campos null para empresa europea, doble fallo de `submit_dossier` → `submit_dossier_failed`, inyección de metadatos `run.model/cost_usd/turns`, timeout con mock de `FuturesTimeoutError`.
+- [x] Corrida real AAPL: 2 turnos, $0.0663 USD, `terminated_by=submit_dossier`. Market data real: todos los campos poblados (price=312.06, change_pct=-0.14, pe_ratio=37.73, etc.). Dossier validado con citas resueltas y `schema_version="1.0.0"`.
 
 ## Subagentes usados en esta sesión
 
-- Ninguno (`gold-annotator` y `redteam-runner` no aplican a esta sesión de construcción del loop).
+- Ninguno (`gold-annotator` y `redteam-runner` no aplican a esta sesión de construcción).
 
 ## Blockers
 
@@ -47,20 +42,20 @@ Abrir la PR de `feat/loop` a `main` y esperar revisión humana (merge squash + t
 
 ## Decisiones tomadas en esta sesión
 
-- **Stubs de client tools en block-C**: `get_market_data` y `submit_dossier` tienen implementaciones mínimas funcionales que permiten correr el loop end-to-end. La implementación de producción (error handling, retries, guardrail classifier, Langfuse spans por tool) es block-D. Esta decisión se tomó para cumplir el criterio de aceptación de Spec 03 ("corrida real sobre ticker cotizado") sin adelantar el scope de block-D.
-- **Langfuse v4**: la API de Langfuse 4.x eliminó `.trace()` y adoptó `start_observation` sobre OpenTelemetry. El tracer se reescribió para la v4. Se usa `base_url` en lugar del parámetro `host` (legacy) para compatibilidad futura.
-- **AGENT_MODEL sin fecha**: `claude-sonnet-4-6` es el ID correcto del modelo. Anthropic no ha publicado un snapshot con fecha para Sonnet 4.6 todavía (a diferencia de Haiku 4.5 que sí tiene `claude-haiku-4-5-20251001`). Se actualiza el comentario y se pina el Haiku con fecha. Pendiente: pinear Sonnet 4.6 con fecha cuando Anthropic la publique.
+- **`yf.Ticker.info` en lugar de `fast_info`**: `fast_info` solo tiene los campos de precio básico; `Ticker.info` devuelve el dict completo con todos los campos de `MarketData`. Se actualiza el mock en los tests.
+- **Inyección de `run.cost_usd` y `run.turns`**: además de `run.model`, el loop inyecta los valores reales de coste y turnos. El modelo se auto-reportaba con valores inventados (8 turnos y $0.04 cuando la realidad fue 2 turnos y $0.0663).
+- **`terminated_by="submit_dossier_failed"`**: estado nuevo para distinguir un cierre con dossier válido (`submit_dossier`) de un cierre por fallo persistente de validación tras el reintento ADR-006.
+- **`source` = "Yahoo Finance"**: alineado con el label del proveedor; el stub de block-C decía "yfinance" (el nombre de la librería).
 
 ## Coste de la sesión
 
-- ~$0.30 USD: 3 corridas reales del agente sobre SHOP (2 turnos c/u, Sonnet 4.6, server tools web_search + code_execution intensivos).
+- ~$0.07 USD: 1 corrida real del agente sobre AAPL (2 turnos, Sonnet 4.6, ~$0.0663 USD).
 
 ## Notas de handoff
 
-- El `.env.example` de `backend/` fue eliminado en revisión (duplicado del de la raíz). El `.env` vive en la raíz del repo y `app/config.py` lo carga de forma resoluble desde cualquier CWD.
-- En block-D: implementar `get_market_data` de producción (yfinance con error handling y timeout, `as_of` con datetime real), `submit_dossier` con retry logic (ADR-006) y el guardrail classifier con `claude-haiku-4-5-20251001`.
+- Los tests unitarios del loop que no mockean yfinance (`test_execute_tools_parallel_dispatches_in_parallel`) hacen llamadas reales a AAPL y MSFT; tardan ~25–30 s pero son verdes. En CI se pueden aislar con un marker `@pytest.mark.live` en block-E/F.
+- En block-E: añadir el guardrail classifier (`claude-haiku-4-5-20251001`), presupuesto por ejecución, backoff + reintentos por tool y rate limiting en el endpoint de serving.
 - El `StarletteDeprecationWarning` de `TestClient` persiste (no afecta); pendiente de revisar al fijar deps de serving.
-- El campo `run.model` del dossier lo rellena hoy el propio modelo (no el loop); en block-D el loop lo inyecta con el valor correcto y real (`AGENT_MODEL`).
 
 ## Comandos útiles ahora
 
@@ -80,10 +75,9 @@ uv run python -c "from app.config import settings; print(settings.model_dump())"
 
 ## Gate de revisión
 
-- **Criterio:** Loop termina por `submit_dossier` o `end_turn` dentro del tope; tool calls paralelas; tope blando/duro; helper maneja `thinking`; cache hit en 2º run; trazas en Langfuse; 36 tests verdes.
+- **Criterio:** `get_market_data("AAPL")` devuelve todos los campos de `MarketData`; `get_market_data("ZZZZ")` devuelve error recuperable; timeout → error recuperable; `submit_dossier` falla dos veces → `submit_dossier_failed`; `run.model/cost_usd/turns` inyectados por el loop; corrida real AAPL con market data completo; 48 tests verdes.
 - **Resultado:** pasa (pendiente gate de PR)
 - **Evidencia:**
-  - 36 tests passed (16 del loop con SDK mockeado).
-  - Corrida real SHOP: 2 turnos, ~$0.08–0.10 USD, `terminated_by=submit_dossier`.
-  - Cache hit: turn 1 → `cache_read=7.303`, turn 2 → `cache_read=275.997`, `cache_created=0` en runs 2 y 3.
-  - Trazas visibles en Langfuse Cloud (3 runs con spans anidados).
+  - 48 tests passed (12 nuevos de block-D, 36 de bloques anteriores).
+  - Corrida real AAPL: 2 turnos, $0.0663 USD, `terminated_by=submit_dossier`, todos los campos de `MarketData` poblados.
+  - `run.model="claude-sonnet-4-6"`, `run.turns=2`, `run.cost_usd=0.0663` en el dossier devuelto.
