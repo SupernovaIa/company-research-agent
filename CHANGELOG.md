@@ -10,6 +10,42 @@ Próximas entradas por sesión.
 
 ---
 
+## [block-E] - 2026-05-31
+
+### Añadido
+
+- **Presupuesto por ejecución con corte duro** (`backend/app/agent/loop.py`): el loop comprueba `total_cost >= settings.agent_budget_usd` tras cada turno. Al superarlo para con `terminated_by="budget_exceeded"`. Default ajustado de 1.0 a 0.50 USD (rango ADR-007: 0.30–0.80).
+- **Timeout del cliente del modelo** (`loop.py`): `anthropic.Anthropic(timeout=settings.agent_timeout_s)`. El timeout per-request se pasa al constructor desde settings; el agente y el clasificador de output (block-F) usarán clientes separados con perfiles distintos.
+- **Tenacity en `get_market_data`** (`backend/app/tools/client.py`): `@retry` con `retry_if_exception_type((ConnectionError, OSError, socket.timeout))`, 3 intentos, backoff exponencial (1 s / 2 s / 4 s). `RetryError` tras agotar intentos → error recuperable devuelto al modelo sin romper el loop. No reintenta `ValueError` (ticker inválido) ni errores 4xx.
+- **Validación Pydantic del output de `get_market_data`** (`client.py`): `_MarketDataOutput` valida el dict construido antes de retornarlo al loop. Fallo de validación → error recuperable, no inyección silenciosa de datos corruptos al contexto.
+- **Rate limiting en serving** (`backend/app/serving/main.py`): middleware `slowapi` con `Limiter(key_func=get_remote_address)`. El límite se lee de `settings.rate_limit_per_minute`. Upgrade a Redis (Upstash) documentado en Spec 04.
+- **Endpoint `POST /research`** (`serving/main.py`): acepta `{"ticker": "AAPL"}`, aplica rate limiting, llama a `run()`, devuelve el dossier JSON o un error estructurado con `terminated_by`. SSE en block-F.
+- **`terminated_by="budget_exceeded"`**: nuevo estado en `LoopResult` y en el mapa de mensajes de `run.py`.
+- **Dependencias**: `tenacity>=8.2`, `slowapi>=0.1` añadidas a `pyproject.toml`.
+- **Tests block-E** — 12 nuevos casos (62 total, todos verdes):
+  - `test_loop.py`: budget cortado, budget respetado, timeout kwarg pasado al constructor Anthropic, output validation de `_MarketDataOutput`.
+  - `test_guardrails.py` (nuevo): endpoint `/research` accesible, 422 para ticker vacío/ausente, limiter cableado a `app.state`, 429 ante `RateLimitExceeded`, Tenacity con 2 fallos + éxito en 3.er intento, retries agotados → error recuperable, CLI mapea `budget_exceeded` a mensaje de usuario.
+
+### Cambiado
+
+- **`agent_budget_usd` default** (`config.py`): `1.0` → `0.50` USD (rango ADR-007).
+- **`specs/04-guardrails.md`**: estado `pre-construida` → `aceptada parcialmente` (guardrails operativos de block-E implementados; indirect prompt injection y clasificador Haiku pendientes de block-F).
+- **`CLAUDE.md` y `.claude/commands/close-session.md`**: incoherencia corregida — skill de cierre actualizada de `review` a `code-review` (la skill multi-agente real usada en el gate de PR).
+
+### Decisiones documentadas
+
+- Tenacity solo para errores de red transitorios: no reintentar `ValueError` ni errores 4xx (input mal formado, ticker inválido).
+- Rate limiting in-memory para block-E; Upstash Redis como upgrade de producción documentado en Spec 04.
+- `_MarketDataOutput` distinto de `MarketData` del dossier: permite `currency: str | None` para tickers europeos y no impone las restricciones de citación del dossier final.
+
+### Notas
+
+- Verificación en vivo: `AGENT_BUDGET_USD=0.0001 uv run python -m app.agent.run --ticker AAPL` → `terminated_by=budget_exceeded`, turno 1, $0.0039 USD.
+- Suite completa: 62 passed (12 nuevos + 50 de bloques anteriores).
+- Coste de la sesión: ~$0.004 USD (1 corrida real con budget de prueba sobre AAPL).
+
+---
+
 ## [block-D] - 2026-05-31
 
 ### Añadido

@@ -4,33 +4,39 @@
 
 ## Sesión actual
 
-**Sesión:** block-D
+**Sesión:** block-E
 **Estado:** gate_pending
 **Fecha apertura:** 2026-05-31
-**Última actualización:** 2026-05-31 21:35
+**Última actualización:** 2026-05-31 23:20
 
 ## Objetivo de la sesión
 
-Completar las implementaciones de producción de las client tools: `get_market_data` con cobertura completa de `MarketData` vía yfinance y `submit_dossier` con retry limitado (ADR-006). Inyección de metadatos reales de la ejecución en `run`. Aceptar Spec 05.
+Implementar los guardrails operativos de Spec 04: presupuesto por ejecución con corte duro, timeout del cliente del modelo, reintentos con backoff (Tenacity), rate limiting en el endpoint, validación de outputs de tools. Alinear incoherencia de docs (`review` → `code-review` en cierre de sesión). Aceptar Spec 04 parcialmente (sin bloque-F: prompt injection defense y clasificador Haiku).
 
 ## Próxima acción concreta
 
-Abrir la PR de `feat/data-output` a `main` y esperar revisión humana (merge squash + tag `04-block-D`). Siguiente bloque: block-E (guardrails operativos: presupuesto por ejecución, backoff y reintentos por tool, rate limiting en el endpoint, clasificador de output Haiku).
+Abrir la PR de `feat/guardrails` a `main` y esperar revisión humana (merge squash + tag `05-block-E`). Siguiente bloque: block-F (indirect prompt injection defense + clasificador de output con Haiku 4.5).
 
 ## Pendientes en esta sesión
 
-- [ ] Merge (squash) de la PR a `main` y tag `04-block-D` (acción humana).
+- [ ] Merge (squash) de la PR a `main` y tag `05-block-E` (acción humana).
 
 ## Completado en esta sesión
 
-- [x] `get_market_data` de producción (`backend/app/tools/client.py`): usa `yf.Ticker.info` para obtener todos los campos de `MarketData` (price, currency, change_pct, market_cap, pe_ratio, forward_pe, eps, dividend_yield, week52_high, week52_low, as_of, source). Campos sin dato → `null`. Timeout de 10 s con `ThreadPoolExecutor.future.result(timeout=...)`. Error como dato con `recoverable=True`.
-- [x] `submit_dossier` con retry limitado (ADR-006): un solo reintento permitido. Si falla por segunda vez el loop termina con `terminated_by="submit_dossier_failed"` en lugar de continuar indefinidamente.
-- [x] Inyección de metadatos reales en `run`: el loop sobreescribe `run.model`, `run.cost_usd` y `run.turns` con los valores reales de la ejecución (el modelo los auto-reporta de forma poco fiable).
-- [x] `terminated_by` ampliado con `"submit_dossier_failed"` en `LoopResult`.
-- [x] `_to_float` helper para coerción null-safe de los valores de yfinance.
-- [x] Spec 05 (`specs/05-structured-output.md`) pasada a estado **aceptada**.
-- [x] Tests: 12 nuevos casos (48 en total, todos verdes). Nuevos: todos los campos de `MarketData`, ticker inválido → error recuperable, ticker vacío → error no recuperable, campos null para empresa europea, doble fallo de `submit_dossier` → `submit_dossier_failed`, inyección de metadatos `run.model/cost_usd/turns`, timeout con mock de `FuturesTimeoutError`.
-- [x] Corrida real AAPL: 2 turnos, $0.0663 USD, `terminated_by=submit_dossier`. Market data real: todos los campos poblados (price=312.06, change_pct=-0.14, pe_ratio=37.73, etc.). Dossier validado con citas resueltas y `schema_version="1.0.0"`.
+- [x] **Presupuesto con corte duro** (`backend/app/agent/loop.py`): el loop comprueba `total_cost >= settings.agent_budget_usd` después de cada turno y para con `terminated_by="budget_exceeded"`. Verificado en vivo: `AGENT_BUDGET_USD=0.0001 uv run python -m app.agent.run --ticker AAPL` cortó en el turno 1 gastando $0.0039 con el mensaje correcto.
+- [x] **Timeout del cliente del modelo** (`loop.py`): `anthropic.Anthropic(timeout=settings.agent_timeout_s)` — el timeout per-request se pasa al constructor (el valor de `.env` es 30 s; el default del código es 120 s).
+- [x] **Tenacity en `get_market_data`** (`backend/app/tools/client.py`): `@retry(retry=retry_if_exception_type((ConnectionError, OSError, socket.timeout)), stop=stop_after_attempt(3), wait=wait_exponential(1, 1, 4))`. `RetryError` tras 3 intentos → error recuperable. Probado con 3 intentos de los que los dos primeros fallan por `ConnectionError`.
+- [x] **Validación de output de tools** (`client.py`): `_MarketDataOutput` (Pydantic v2) valida el dict de `get_market_data` antes de retornarlo al loop; fallo → error recuperable.
+- [x] **Rate limiting en serving** (`backend/app/serving/main.py`): `slowapi` + `_limiter = Limiter(key_func=get_remote_address)` + `@_limiter.limit(_RATE_LIMIT)` en el endpoint `/research`. `_RATE_LIMIT` leído de `settings.rate_limit_per_minute`.
+- [x] **Endpoint `/research` POST** (`serving/main.py`): acepta `{"ticker": "AAPL"}`, rate-limited, llama a `run()`, devuelve el dossier o error con `terminated_by`. SSE en block-F.
+- [x] **`agent_budget_usd` default ajustado** (`config.py`): de `1.0` a `0.50` USD (rango ADR-007: 0.30–0.80).
+- [x] **`budget_exceeded`** añadido a `terminated_by` en `LoopResult` y al mapa de mensajes de `run.py`.
+- [x] **Dependencias añadidas** (`pyproject.toml`): `tenacity>=8.2`, `slowapi>=0.1`.
+- [x] **Tests block-E** (62 en total, todos verdes):
+  - `test_loop.py`: `test_loop_budget_exceeded_stops_loop`, `test_loop_budget_not_exceeded_continues`, `test_loop_client_timeout_kwarg_is_passed`, `test_get_market_data_output_validation_bad_shape_returns_recoverable_error`.
+  - `test_guardrails.py` (nuevo, 8 casos): endpoint `/research`, 422 para ticker vacío/ausente, limiter cableado a `app.state`, 429 con `RateLimitExceeded`, retries de Tenacity con 2 fallos + éxito en el 3.º, retries agotados → error recuperable, mensaje de CLI para `budget_exceeded`.
+- [x] **Docs — incoherencia corregida**: `review` → `code-review` en `CLAUDE.md` (Disciplina de sesión) y `.claude/commands/close-session.md`.
+- [x] **Spec 04** actualizada a estado `aceptada parcialmente` (bloque-E implementado; bloque-F pendiente).
 
 ## Subagentes usados en esta sesión
 
@@ -42,42 +48,60 @@ Abrir la PR de `feat/data-output` a `main` y esperar revisión humana (merge squ
 
 ## Decisiones tomadas en esta sesión
 
-- **`yf.Ticker.info` en lugar de `fast_info`**: `fast_info` solo tiene los campos de precio básico; `Ticker.info` devuelve el dict completo con todos los campos de `MarketData`. Se actualiza el mock en los tests.
-- **Inyección de `run.cost_usd` y `run.turns`**: además de `run.model`, el loop inyecta los valores reales de coste y turnos. El modelo se auto-reportaba con valores inventados (8 turnos y $0.04 cuando la realidad fue 2 turnos y $0.0663).
-- **`terminated_by="submit_dossier_failed"`**: estado nuevo para distinguir un cierre con dossier válido (`submit_dossier`) de un cierre por fallo persistente de validación tras el reintento ADR-006.
-- **`source` = "Yahoo Finance"**: alineado con el label del proveedor; el stub de block-C decía "yfinance" (el nombre de la librería).
+- **`agent_budget_usd` default 0.50 USD**: centro del rango ADR-007 (0.30–0.80). Sobreescribible por `AGENT_BUDGET_USD` en `.env`. Recalibrar con datos del eval set en block-H.
+- **Tenacity solo en errores de red**: `ConnectionError`, `OSError`, `socket.timeout`. `ValueError` (ticker sin precio) y errores 4xx de yfinance no se reintentan. `RetryError` → error recuperable devuelto al modelo.
+- **Rate limiting in-memory (slowapi)**: Upstash Redis documentado como upgrade de producción (Spec 04). Para el scope de block-E, el estado en memoria es suficiente.
+- **`_MarketDataOutput` hereda de `MarketData`** (fix code-review #4): subclase con un solo override (`currency: str | None`). Pydantic coerciona el ISO string de `as_of` a `datetime` automáticamente; el campo `ticker` extra se ignora. Así los campos nuevos que se añadan a `MarketData` en el futuro se validan automáticamente aquí también.
+- **Budget check al inicio del turno** (fix code-review #1): movido al inicio del bucle (antes de la llamada API) para que siempre se despachen los tools del turno anterior, incluyendo `submit_dossier`. Un dossier completado en el turno que agota el presupuesto ya no se descarta.
+
+## Follow-ups de block-G (anotados en code-review PR #6, no tocar en block-E)
+
+- **#2** `serving/main.py:52` — `run()` sin try/except; `anthropic.AuthenticationError`, `RateLimitError`, `FileNotFoundError` devuelven `{"detail": "Internal Server Error"}` en lugar del contrato estructurado `{"error": ..., "terminated_by": ...}`. Mapear cada clase de excepción a código HTTP correcto (401/429/503/500).
+- **#3** `serving/main.py:26` — `_RATE_LIMIT` frozen al import; patches de settings en tests y cambios de env en runtime son ignorados. Considerar lambda o evaluación lazy.
+- **#5** `serving/main.py:46` — lazy import de `run` oculta errores de import hasta la primera petición. Mover al nivel de módulo para que falle en startup.
+- **Endpoint `/research` síncrono (sin SSE)**: el streaming SSE llega en block-F/G (Spec 06). Por ahora el endpoint bloquea hasta completar el loop.
+- **Timeout del modelo `agent_timeout_s`**: el valor del `.env` actual es 30 s (sobrescribe el default del código de 120 s). El cliente del agente y el clasificador Haiku (block-F) usarán clientes separados con timeouts diferentes.
 
 ## Coste de la sesión
 
-- ~$0.07 USD: 1 corrida real del agente sobre AAPL (2 turnos, Sonnet 4.6, ~$0.0663 USD).
+- ~$0.004 USD: 1 corrida real del agente sobre AAPL con `AGENT_BUDGET_USD=0.0001` (corte inmediato en el turno 1 para verificar el guardrail, $0.0039 USD).
 
 ## Notas de handoff
 
-- Los tests unitarios del loop que no mockean yfinance (`test_execute_tools_parallel_dispatches_in_parallel`) hacen llamadas reales a AAPL y MSFT; tardan ~25–30 s pero son verdes. En CI se pueden aislar con un marker `@pytest.mark.live` en block-E/F.
-- En block-E: añadir el guardrail classifier (`claude-haiku-4-5-20251001`), presupuesto por ejecución, backoff + reintentos por tool y rate limiting en el endpoint de serving.
+- El endpoint `/research` es síncrono y sin autenticación por ahora. SSE y auth llegan en block-F/G.
+- `AGENT_TIMEOUT_S=30` en el `.env` actual. El default en `config.py` es 120 s. El test `test_loop_client_timeout_kwarg_is_passed` verifica que el valor de settings llega al constructor del cliente.
+- En block-F: añadir el clasificador de output (Haiku 4.5), defensa frente a indirect prompt injection (delimitadores en tool results + system prompt) y los últimos criterios de Spec 04.
 - El `StarletteDeprecationWarning` de `TestClient` persiste (no afecta); pendiente de revisar al fijar deps de serving.
+- Los tests de live (`test_execute_tools_parallel_dispatches_in_parallel`) siguen haciendo llamadas reales a AAPL y MSFT; tardan ~25–30 s pero son verdes. Marcar con `@pytest.mark.live` en block-F.
 
 ## Comandos útiles ahora
 
 ```bash
 cd backend
 
-# Correr el agente
+# Correr el agente con presupuesto de prueba
+AGENT_BUDGET_USD=0.0001 uv run python -m app.agent.run --ticker AAPL
+
+# Correr el agente normal
 uv run python -m app.agent.run --ticker AAPL
-uv run python -m app.agent.run --ticker SAP.DE -v
 
 # Suite de tests
-uv run pytest -q
+uv run pytest -q --ignore=tests/evals
 
-# Ver configuración cargada
-uv run python -c "from app.config import settings; print(settings.model_dump())"
+# Levantar el endpoint con rate limiting
+uv run uvicorn app.serving.main:app --reload
+
+# Probar el endpoint
+curl -s -X POST http://localhost:8000/research -H "Content-Type: application/json" -d '{"ticker":"AAPL"}'
 ```
 
 ## Gate de revisión
 
-- **Criterio:** `get_market_data("AAPL")` devuelve todos los campos de `MarketData`; `get_market_data("ZZZZ")` devuelve error recuperable; timeout → error recuperable; `submit_dossier` falla dos veces → `submit_dossier_failed`; `run.model/cost_usd/turns` inyectados por el loop; corrida real AAPL con market data completo; 48 tests verdes.
+- **Criterio:** presupuesto corta una ejecución que diverge; timeout pasado al cliente Anthropic; Tenacity reintenta errores de conexión hasta 3 veces; `_MarketDataOutput` valida antes de inyectar al contexto; rate limiting activo en `/research` (429 ante exceso); 62 tests verdes.
 - **Resultado:** pasa (pendiente gate de PR)
 - **Evidencia:**
-  - 48 tests passed (12 nuevos de block-D, 36 de bloques anteriores).
-  - Corrida real AAPL: 2 turnos, $0.0663 USD, `terminated_by=submit_dossier`, todos los campos de `MarketData` poblados.
-  - `run.model="claude-sonnet-4-6"`, `run.turns=2`, `run.cost_usd=0.0663` en el dossier devuelto.
+  - `AGENT_BUDGET_USD=0.0001 uv run python -m app.agent.run --ticker AAPL` → `terminated_by=budget_exceeded`, turno 1, $0.0039 USD.
+  - `test_loop_client_timeout_kwarg_is_passed` confirma `timeout=30` pasado al constructor.
+  - `test_get_market_data_retries_on_connection_error` confirma 3 intentos con 2 ConnectionError previos.
+  - `test_rate_limit_exceeded_returns_429` confirma 429 con `RateLimitExceeded`.
+  - 62 tests passed (8 nuevos de guardrails + 4 de block-E en test_loop + 50 anteriores).

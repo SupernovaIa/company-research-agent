@@ -1,6 +1,6 @@
 # Spec 04 · Guardrails del loop
 
-**Estado:** pre-construida (se implementa en Fase 3, block-E y block-F)
+**Estado:** aceptada parcialmente (guardrails operativos implementados en block-E; indirect prompt injection y clasificador de output quedan para block-F)
 **Fase:** 3 · Guardrails + red team (block-E guardrails operativos, block-F inyección y red team)
 **Dependencias:** Spec 03 (loop), Spec 02 (tools), Spec 01 (schema del Dossier)
 

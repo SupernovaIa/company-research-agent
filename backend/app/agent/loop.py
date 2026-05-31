@@ -59,7 +59,7 @@ class LoopResult:
     dossier: CompanyDossier | None
     turns: int
     cost_usd: float
-    terminated_by: str  # "submit_dossier" | "end_turn" | "hard_limit" | "submit_dossier_failed"
+    terminated_by: str  # "submit_dossier" | "end_turn" | "hard_limit" | "submit_dossier_failed" | "budget_exceeded"
 
 
 def _load_system_prompt() -> str:
@@ -144,8 +144,11 @@ def run(
     # api_key from settings (loaded from the repo-root .env via pydantic-settings).
     # Falls back to the ANTHROPIC_API_KEY env var if settings.anthropic_api_key is empty,
     # which is the default SDK behaviour when api_key=None.
+    # timeout per API request (ADR-007, Spec 04): agent and classifier use separate
+    # clients with different timeout profiles; agent uses agent_timeout_s.
     client = anthropic.Anthropic(
-        api_key=settings.anthropic_api_key or None
+        api_key=settings.anthropic_api_key or None,
+        timeout=settings.agent_timeout_s,
     )
     tracer = get_tracer()
 
@@ -167,6 +170,7 @@ def run(
     ]
 
     total_cost = 0.0
+    budget_usd = settings.agent_budget_usd
     dossier: CompanyDossier | None = None
     terminated_by = "hard_limit"
     turn = 0
@@ -175,6 +179,20 @@ def run(
 
     with tracer.start(ticker) as run_trace:
         for turn in range(1, hard_limit + 1):
+            # Hard budget cut (ADR-007, Spec 04): placed BEFORE the API call so that
+            # the previous turn's tools (including submit_dossier) are always dispatched
+            # before the cap is enforced. A completed dossier is never discarded.
+            # On turn 1 total_cost=0 so this never fires before the first response.
+            if total_cost >= budget_usd:
+                logger.warning(
+                    "Budget cap $%.2f exceeded (spent $%.4f); stopping before turn %d",
+                    budget_usd,
+                    total_cost,
+                    turn,
+                )
+                terminated_by = "budget_exceeded"
+                break
+
             # Soft limit: inject a wrap-up message so the model finishes soon.
             if turn == soft_limit:
                 logger.info("Soft turn limit reached — injecting wrap-up message")

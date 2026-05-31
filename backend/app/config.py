@@ -54,9 +54,9 @@ class Settings(BaseSettings):
 
     # --- Agent loop limits (ADR-007) ----------------------------------------
     # Provisional values for block-C; recalibrated against the eval set in block-E.
-    agent_max_turns: int = 20   # hard limit
-    agent_budget_usd: float = 1.0
-    agent_timeout_s: int = 300
+    agent_max_turns: int = 20    # hard limit; recalibrate against eval set in block-H
+    agent_budget_usd: float = 0.50  # ADR-007 range 0.30–0.80; provisional for block-E
+    agent_timeout_s: int = 120   # Anthropic client timeout per request (seconds)
 
     # --- Serving ---------------------------------------------------------------
     rate_limit_per_minute: int = 10
