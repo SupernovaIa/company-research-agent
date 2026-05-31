@@ -14,3 +14,4 @@
 - [ADR-010: Loop sobre el SDK directo vs LangChain/LangGraph](docs/adr/ADR-010-sdk-directo-vs-langchain.md)
 - [ADR-011: Cálculo con la code execution tool (built-in)](docs/adr/ADR-011-code-execution.md)
 - [ADR-012: Alcance stateless del agente y evolutivos de producto](docs/adr/ADR-012-alcance-stateless-y-evolutivos.md)
+- [ADR-013: Defensa en capas frente a indirect prompt injection y red team](docs/adr/ADR-013-defensa-inyeccion-en-capas.md)

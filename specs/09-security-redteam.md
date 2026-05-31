@@ -1,6 +1,6 @@
 # Spec 09 · Seguridad y red teaming
 
-**Estado:** pre-construida (se implementa en Fase 3, block-F)
+**Estado:** aceptada (implementada en block-F 2026-05-31)
 **Fase:** 3 · Guardrails + red team (block-F)
 **Dependencias:** Spec 04 (guardrails), Spec 05 (output estructurado)
 
@@ -32,6 +32,14 @@ Tener una checklist de red teaming (≥20 entradas) que ataque el agente despleg
 - El porcentaje de ataques bloqueados se compara contra el umbral mínimo y decide si el tag de versión sale.
 - Cada categoría está mapeada a su entrada del OWASP Top 10 for LLM.
 
+## Estado de implementación (block-F)
+
+- Checklist de **24 payloads** en `security/red-team-checklist.md`, fuente de verdad legible por máquina en `backend/app/redteam/payloads.py` (test de sincronía en `test_redteam.py`). Repartidos en las cuatro categorías y mapeados a OWASP LLM Top 10 (LLM01/02/05/06/09).
+- Cada payload declara la **capa de defensa** esperada (L1 delimitadores, L2 system prompt, L3 clasificador, L4 mínimo privilegio) y el resultado esperado.
+- Runner determinista (`app.redteam.run`) ejecutado por el subagente `redteam-runner` o vía `/redteam`; produce reporte PASS/FAIL por entrada y bloqueo global.
+- **Umbral fijado en PASS ≥ 90%** (`runner.THRESHOLD`); por debajo, el gate falla (exit 1) y el tag no sale.
+- Decisión de diseño firmada: el gate canónico es **determinista y offline** (sin coste, reproducible en CI); el backstop semántico de Haiku (L3b) se valida en **modo live** con evidencia en las trazas de Langfuse (span `output_guardrail`). Ver ADR-013.
+
 ## Riesgos
 
 - Clasificador de output con el mismo modelo del agente: sesgo de auto-aprobación. Usar Haiku 4.5 o proveedor distinto.
@@ -40,5 +48,5 @@ Tener una checklist de red teaming (≥20 entradas) que ataque el agente despleg
 
 ## Preguntas abiertas
 
-- Umbral mínimo de bloqueo: fijar en block-F según tolerancia de riesgo del endpoint público (referencia: PASS ≥ 90%).
+- ~~Umbral mínimo de bloqueo~~ **Resuelto (block-F):** PASS ≥ 90% (`runner.THRESHOLD`).
 - Cadencia del red teaming: solo antes del tag vs periódico en producción. Decidir junto a la política de mantenimiento.

@@ -30,3 +30,6 @@ node_modules/
 # Ruido del SO
 .DS_Store
 Thumbs.db
+
+# Scheduler runtime lock (per-machine)
+.claude/scheduled_tasks.lock

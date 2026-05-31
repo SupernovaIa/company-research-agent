@@ -4,43 +4,41 @@
 
 ## Sesión actual
 
-**Sesión:** block-E
+**Sesión:** block-F
 **Estado:** gate_pending
 **Fecha apertura:** 2026-05-31
-**Última actualización:** 2026-05-31 23:20
+**Última actualización:** 2026-05-31
 
 ## Objetivo de la sesión
 
-Implementar los guardrails operativos de Spec 04: presupuesto por ejecución con corte duro, timeout del cliente del modelo, reintentos con backoff (Tenacity), rate limiting en el endpoint, validación de outputs de tools. Alinear incoherencia de docs (`review` → `code-review` en cierre de sesión). Aceptar Spec 04 parcialmente (sin bloque-F: prompt injection defense y clasificador Haiku).
+Implementar la defensa en capas frente a indirect prompt injection (Spec 04, parte pendiente de block-E) y la checklist de red teaming con gate de bloqueo (Spec 09): system prompt que marca el contenido de tools como datos, delimitadores del contenido externo, clasificador de output con Haiku 4.5 y mínimo privilegio. Aceptar Spec 09 y completar Spec 04 (a aceptada del todo).
 
 ## Próxima acción concreta
 
-Abrir la PR de `feat/guardrails` a `main` y esperar revisión humana (merge squash + tag `05-block-E`). Siguiente bloque: block-F (indirect prompt injection defense + clasificador de output con Haiku 4.5).
+Abrir la PR de `feat/injection-redteam` a `main`, correr **security-review** sobre la PR (gate de este bloque, no code-review), postear el resultado como comentario y parar. Merge (squash) + tag `06-block-F` son acción humana.
 
 ## Pendientes en esta sesión
 
-- [ ] Merge (squash) de la PR a `main` y tag `05-block-E` (acción humana).
+- [ ] Merge (squash) de la PR a `main` y tag `06-block-F` (acción humana).
+- [ ] (Opcional) Backstop live del clasificador Haiku con evidencia en trazas Langfuse, bajo presupuesto controlado (modo live de `/redteam`).
 
 ## Completado en esta sesión
 
-- [x] **Presupuesto con corte duro** (`backend/app/agent/loop.py`): el loop comprueba `total_cost >= settings.agent_budget_usd` después de cada turno y para con `terminated_by="budget_exceeded"`. Verificado en vivo: `AGENT_BUDGET_USD=0.0001 uv run python -m app.agent.run --ticker AAPL` cortó en el turno 1 gastando $0.0039 con el mensaje correcto.
-- [x] **Timeout del cliente del modelo** (`loop.py`): `anthropic.Anthropic(timeout=settings.agent_timeout_s)` — el timeout per-request se pasa al constructor (el valor de `.env` es 30 s; el default del código es 120 s).
-- [x] **Tenacity en `get_market_data`** (`backend/app/tools/client.py`): `@retry(retry=retry_if_exception_type((ConnectionError, OSError, socket.timeout)), stop=stop_after_attempt(3), wait=wait_exponential(1, 1, 4))`. `RetryError` tras 3 intentos → error recuperable. Probado con 3 intentos de los que los dos primeros fallan por `ConnectionError`.
-- [x] **Validación de output de tools** (`client.py`): `_MarketDataOutput` (Pydantic v2) valida el dict de `get_market_data` antes de retornarlo al loop; fallo → error recuperable.
-- [x] **Rate limiting en serving** (`backend/app/serving/main.py`): `slowapi` + `_limiter = Limiter(key_func=get_remote_address)` + `@_limiter.limit(_RATE_LIMIT)` en el endpoint `/research`. `_RATE_LIMIT` leído de `settings.rate_limit_per_minute`.
-- [x] **Endpoint `/research` POST** (`serving/main.py`): acepta `{"ticker": "AAPL"}`, rate-limited, llama a `run()`, devuelve el dossier o error con `terminated_by`. SSE en block-F.
-- [x] **`agent_budget_usd` default ajustado** (`config.py`): de `1.0` a `0.50` USD (rango ADR-007: 0.30–0.80).
-- [x] **`budget_exceeded`** añadido a `terminated_by` en `LoopResult` y al mapa de mensajes de `run.py`.
-- [x] **Dependencias añadidas** (`pyproject.toml`): `tenacity>=8.2`, `slowapi>=0.1`.
-- [x] **Tests block-E** (62 en total, todos verdes):
-  - `test_loop.py`: `test_loop_budget_exceeded_stops_loop`, `test_loop_budget_not_exceeded_continues`, `test_loop_client_timeout_kwarg_is_passed`, `test_get_market_data_output_validation_bad_shape_returns_recoverable_error`.
-  - `test_guardrails.py` (nuevo, 8 casos): endpoint `/research`, 422 para ticker vacío/ausente, limiter cableado a `app.state`, 429 con `RateLimitExceeded`, retries de Tenacity con 2 fallos + éxito en el 3.º, retries agotados → error recuperable, mensaje de CLI para `budget_exceeded`.
-- [x] **Docs — incoherencia corregida**: `review` → `code-review` en `CLAUDE.md` (Disciplina de sesión) y `.claude/commands/close-session.md`.
-- [x] **Spec 04** actualizada a estado `aceptada parcialmente` (bloque-E implementado; bloque-F pendiente).
+- [x] **L1 · Delimitadores** (`backend/app/guardrails/injection.py`): `wrap_external_content` envuelve el contenido de tools en `<<UNTRUSTED_TOOL_CONTENT>> … <<END_UNTRUSTED_TOOL_CONTENT>>` y sanitiza falsificación de frontera y de turnos (`System:`/`User:`/`Assistant:`). Cableado en `agent/loop.py` al construir los `tool_result`.
+- [x] **L2 · System prompt** (`prompts/system_prompt_v1.md`): sección "Untrusted tool content (security)" — contenido de tools como datos, prohibición de obedecer instrucciones embebidas, revelar el prompt, cambiar de tarea, usar code execution para recomendar, emitir veredictos de compra/venta.
+- [x] **L3 · Clasificador de output** (`backend/app/guardrails/classifier.py`): pre-filtro determinista (`heuristic_scan`) + backstop semántico con **Haiku 4.5** (`GUARDRAIL_MODEL`), cliente dedicado con su propio timeout (`classifier_timeout_s=15`). El loop descarta el dossier (`terminated_by="guardrail_blocked"`) si no pasa. Degrada con elegancia: sin API key, modo solo-heurístico; error del clasificador no brickea el agente si la heurística pasó.
+- [x] **L4 · Mínimo privilegio** (`injection.py`): inventario read-only declarado; `capability_is_available` confirma que ninguna capacidad con efectos secundarios (send_email, delete, http_post, …) tiene tool.
+- [x] **Harness de red team** (`backend/app/redteam/`): `payloads.py` (24 payloads, fuente de verdad), `runner.py` (ejecuta cada payload contra su capa, `THRESHOLD=0.90`), `run.py` (`python -m app.redteam.run [--ci|--json]`, exit 1 si < umbral).
+- [x] **Checklist** (`security/red-team-checklist.md`): 24 payloads con OWASP, categoría, vector, capa esperada y resultado; sincronía con `payloads.py` verificada por test.
+- [x] **Slash command `/redteam`** cableado al runner determinista + modo live, delegando en el subagente `redteam-runner`.
+- [x] **Observabilidad** (`observability/tracer.py`): `record_guardrail` añade el span `output_guardrail` (capa que actuó, allowed, reason) a la traza.
+- [x] **ADR-013** (defensa en capas + red team, mapeo OWASP) e índice en `DECISIONS.md`.
+- [x] **Specs**: Spec 09 → aceptada; Spec 04 → aceptada del todo (sección de la capa de inyección añadida).
+- [x] **Tests** (todos verdes): `test_injection.py`, `test_classifier.py`, `test_redteam.py`, `conftest.py` (fixture autouse que neutraliza la llamada Haiku en los tests del loop). 84 passed.
 
 ## Subagentes usados en esta sesión
 
-- Ninguno (`gold-annotator` y `redteam-runner` no aplican a esta sesión de construcción).
+- `redteam-runner`: cableado vía `/redteam` para ejecutar el harness y reportar PASS/FAIL (gate humano sobre el resultado, ADR-009).
 
 ## Blockers
 
@@ -48,60 +46,39 @@ Abrir la PR de `feat/guardrails` a `main` y esperar revisión humana (merge squa
 
 ## Decisiones tomadas en esta sesión
 
-- **`agent_budget_usd` default 0.50 USD**: centro del rango ADR-007 (0.30–0.80). Sobreescribible por `AGENT_BUDGET_USD` en `.env`. Recalibrar con datos del eval set en block-H.
-- **Tenacity solo en errores de red**: `ConnectionError`, `OSError`, `socket.timeout`. `ValueError` (ticker sin precio) y errores 4xx de yfinance no se reintentan. `RetryError` → error recuperable devuelto al modelo.
-- **Rate limiting in-memory (slowapi)**: Upstash Redis documentado como upgrade de producción (Spec 04). Para el scope de block-E, el estado en memoria es suficiente.
-- **`_MarketDataOutput` hereda de `MarketData`** (fix code-review #4): subclase con un solo override (`currency: str | None`). Pydantic coerciona el ISO string de `as_of` a `datetime` automáticamente; el campo `ticker` extra se ignora. Así los campos nuevos que se añadan a `MarketData` en el futuro se validan automáticamente aquí también.
-- **Budget check al inicio del turno** (fix code-review #1): movido al inicio del bucle (antes de la llamada API) para que siempre se despachen los tools del turno anterior, incluyendo `submit_dossier`. Un dossier completado en el turno que agota el presupuesto ya no se descarta.
-
-## Follow-ups de block-G (anotados en code-review PR #6, no tocar en block-E)
-
-- **#2** `serving/main.py:52` — `run()` sin try/except; `anthropic.AuthenticationError`, `RateLimitError`, `FileNotFoundError` devuelven `{"detail": "Internal Server Error"}` en lugar del contrato estructurado `{"error": ..., "terminated_by": ...}`. Mapear cada clase de excepción a código HTTP correcto (401/429/503/500).
-- **#3** `serving/main.py:26` — `_RATE_LIMIT` frozen al import; patches de settings en tests y cambios de env en runtime son ignorados. Considerar lambda o evaluación lazy.
-- **#5** `serving/main.py:46` — lazy import de `run` oculta errores de import hasta la primera petición. Mover al nivel de módulo para que falle en startup.
-- **Endpoint `/research` síncrono (sin SSE)**: el streaming SSE llega en block-F/G (Spec 06). Por ahora el endpoint bloquea hasta completar el loop.
-- **Timeout del modelo `agent_timeout_s`**: el valor del `.env` actual es 30 s (sobrescribe el default del código de 120 s). El cliente del agente y el clasificador Haiku (block-F) usarán clientes separados con timeouts diferentes.
+- **Gate de red team determinista y offline como canónico** (ADR-013): el runner ejercita cada capa sin llamar al modelo → gratis, reproducible, gateable en CI. El backstop semántico de Haiku (L3b) se valida aparte en modo live con evidencia en Langfuse. Evita un gate que dependa de API y red.
+- **Clasificador con Haiku 4.5** (distinto del agente Sonnet): sin sesgo de auto-aprobación (Spec 04).
+- **Pre-filtro heurístico determinista** además del clasificador semántico: bloquea lo obvio sin coste y hace cada capa verificable offline.
+- **Wrap uniforme de todos los `tool_result`**: defensa consistente; el delimitador solo enmarca datos.
+- **`terminated_by="guardrail_blocked"`**: nuevo estado cuando el clasificador descarta un dossier schema-válido pero inseguro.
 
 ## Coste de la sesión
 
-- ~$0.004 USD: 1 corrida real del agente sobre AAPL con `AGENT_BUDGET_USD=0.0001` (corte inmediato en el turno 1 para verificar el guardrail, $0.0039 USD).
+- ~$0 USD: el gate canónico es determinista (sin llamadas al modelo). No se ejecutó el agente en vivo (backstop Haiku/Langfuse documentado como paso complementario bajo presupuesto).
 
 ## Notas de handoff
 
-- El endpoint `/research` es síncrono y sin autenticación por ahora. SSE y auth llegan en block-F/G.
-- `AGENT_TIMEOUT_S=30` en el `.env` actual. El default en `config.py` es 120 s. El test `test_loop_client_timeout_kwarg_is_passed` verifica que el valor de settings llega al constructor del cliente.
-- En block-F: añadir el clasificador de output (Haiku 4.5), defensa frente a indirect prompt injection (delimitadores en tool results + system prompt) y los últimos criterios de Spec 04.
-- El `StarletteDeprecationWarning` de `TestClient` persiste (no afecta); pendiente de revisar al fijar deps de serving.
-- Los tests de live (`test_execute_tools_parallel_dispatches_in_parallel`) siguen haciendo llamadas reales a AAPL y MSFT; tardan ~25–30 s pero son verdes. Marcar con `@pytest.mark.live` en block-F.
+- El backstop live del clasificador (Haiku + trazas Langfuse) está cableado (`record_guardrail`, span `output_guardrail`) pero no ejecutado en esta sesión para respetar la disciplina de coste. Modo live disponible en `/redteam`.
+- La heurística L3 es por patrones (regex): cubre lo obvio; lo semántico depende del backstop Haiku.
 
 ## Comandos útiles ahora
 
 ```bash
 cd backend
 
-# Correr el agente con presupuesto de prueba
-AGENT_BUDGET_USD=0.0001 uv run python -m app.agent.run --ticker AAPL
-
-# Correr el agente normal
-uv run python -m app.agent.run --ticker AAPL
+# Gate de red team (determinista)
+uv run python -m app.redteam.run         # tabla
+uv run python -m app.redteam.run --ci    # gate (exit 1 si < 90%)
 
 # Suite de tests
 uv run pytest -q --ignore=tests/evals
-
-# Levantar el endpoint con rate limiting
-uv run uvicorn app.serving.main:app --reload
-
-# Probar el endpoint
-curl -s -X POST http://localhost:8000/research -H "Content-Type: application/json" -d '{"ticker":"AAPL"}'
 ```
 
 ## Gate de revisión
 
-- **Criterio:** presupuesto corta una ejecución que diverge; timeout pasado al cliente Anthropic; Tenacity reintenta errores de conexión hasta 3 veces; `_MarketDataOutput` valida antes de inyectar al contexto; rate limiting activo en `/research` (429 ante exceso); 62 tests verdes.
-- **Resultado:** pasa (pendiente gate de PR)
+- **Criterio:** `/redteam` da PASS ≥ 90% y cada capa (L1–L4) bloquea su payload; las cuatro capas implementadas y cableadas; suite verde. **Gate de este bloque: security-review** (no code-review).
+- **Resultado:** pasa (pendiente gate de PR / security-review).
 - **Evidencia:**
-  - `AGENT_BUDGET_USD=0.0001 uv run python -m app.agent.run --ticker AAPL` → `terminated_by=budget_exceeded`, turno 1, $0.0039 USD.
-  - `test_loop_client_timeout_kwarg_is_passed` confirma `timeout=30` pasado al constructor.
-  - `test_get_market_data_retries_on_connection_error` confirma 3 intentos con 2 ConnectionError previos.
-  - `test_rate_limit_exceeded_returns_429` confirma 429 con `RateLimitExceeded`.
-  - 62 tests passed (8 nuevos de guardrails + 4 de block-E en test_loop + 50 anteriores).
+  - `python -m app.redteam.run` → **24/24 PASS, bloqueo 100.0%** (umbral 90%), cobertura por capa `{L1:6, L2:5, L3:7, L4:6}`, exit 0.
+  - Suite completa: **84 passed** (`--ignore=tests/evals`).
+  - Span `output_guardrail` añadido a la traza Langfuse para evidencia de capa en modo live.
