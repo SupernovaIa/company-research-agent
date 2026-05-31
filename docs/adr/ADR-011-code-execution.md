@@ -1,7 +1,7 @@
 # ADR-011: Cálculo con la code execution tool (built-in)
 
-**Estado:** propuesto (se firma en Fase 1, block-B)
-**Fecha:** <YYYY-MM-DD>
+**Estado:** aceptado (firmado en block-B 2026-05-31)
+**Fecha:** 2026-05-31
 **Tags:** tools, calculo, code-execution, guardrails
 
 ## Contexto y problema

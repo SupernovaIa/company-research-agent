@@ -1,6 +1,6 @@
 # Spec 02 · Tools del agente
 
-**Estado:** pre-construida (se implementa en Fase 2 y Fase 3)
+**Estado:** aceptada (contrato firmado en block-B 2026-05-31: inventario de TOOLS declarado; implementación de la lógica en Fase 2 y Fase 3)
 **Fase:** 2 (`get_market_data`, `web_search`, `web_fetch`, code execution, `submit_dossier`); la defensa del contenido de `web_fetch` y el acotado de code execution en Fase 3
 **Dependencias:** Spec 01 (schema del Dossier), ADR-003 (web_search server-side), ADR-004 (yfinance), ADR-005 (web_fetch server-side), ADR-011 (code execution)
 

@@ -1,6 +1,6 @@
 # Spec 01 · Schema del Dossier
 
-**Estado:** pre-construida (se firma en Fase 1, block-B)
+**Estado:** aceptada (firmada en block-B 2026-05-31)
 **Fase:** 1 · Infra + diseño
 **Dependencias:** ADR del agente (alcance, tools elegidas, proveedor de datos de mercado)
 

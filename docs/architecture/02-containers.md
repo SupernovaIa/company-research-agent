@@ -64,7 +64,7 @@ C4Container
 - Clasificador con Haiku 4.5 sobre el output del modelo para detectar respuestas que siguen instrucciones inyectadas vía contenido de tools.
 
 ### Dossier validator
-- Modelo Pydantic v2 `CompanyDossier` con sus sub-schemas (`Company`, `MarketData`, `Fact`, `NewsItem`, `Source`), cada `Fact` y `NewsItem` con un `source_id` que resuelve a un `Source` real.
+- Modelo Pydantic v2 `CompanyDossier` con sus sub-schemas (`Company`, `MarketData`, `Fact`, `NewsItem`, `Source`, `RunMeta`). Cada `NewsItem` y cada `Fact` recuperado de la web cita un `source_id` que resuelve a un `Source` real; un `Fact` derivado de un cálculo lleva `basis` en lugar de `source_id` y su procedencia resuelve a datos presentes en el dossier.
 - Valida el output final antes de devolverlo al cliente. Si falla, pide un reintento con el error específico; si persiste, devuelve el error con el output parcial.
 
 ### Observability

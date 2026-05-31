@@ -1,7 +1,7 @@
 # ADR-010: Loop sobre el SDK directo vs LangChain/LangGraph
 
-**Estado:** propuesto (se firma en Fase 1, block-B; se implementa en Fase 2, block-C)
-**Fecha:** <YYYY-MM-DD>
+**Estado:** aceptado (firmado en block-B 2026-05-31; se implementa en Fase 2, block-C)
+**Fecha:** 2026-05-31
 **Tags:** loop, sdk, abstraccion, langchain
 
 ## Contexto y problema

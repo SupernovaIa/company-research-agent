@@ -1,7 +1,7 @@
 # ADR-008: Observabilidad del loop con Langfuse
 
-**Estado:** propuesto (se firma en Fase 1, block-B; instrumentación base en Fase 2, block-C, cuando nace el loop; métricas de agente y comandos en Fase 4, block-G)
-**Fecha:** <YYYY-MM-DD>
+**Estado:** aceptado (firmado en block-B 2026-05-31; instrumentación base en Fase 2, block-C, cuando nace el loop; métricas de agente y comandos en Fase 4, block-G)
+**Fecha:** 2026-05-31
 **Tags:** observabilidad, metricas, tracing
 
 ## Contexto y problema

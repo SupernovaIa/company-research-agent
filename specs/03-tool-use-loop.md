@@ -1,6 +1,6 @@
 # Spec 03 · Loop de tool use
 
-**Estado:** pre-construida (se implementa en Fase 2, block-C)
+**Estado:** aceptada (contrato del loop firmado en block-B 2026-05-31; implementación en Fase 2, block-C)
 **Fase:** 2 · Loop + datos + output (block-C)
 **Dependencias:** Spec 02 (tools), Spec 01 (schema del Dossier)
 
