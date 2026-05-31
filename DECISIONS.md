@@ -1,6 +1,6 @@
 # Decisiones de arquitectura (ADR)
 
-Índice de los Architecture Decision Records del proyecto. Cada decisión vive en `docs/adr/`. Estado actual: propuesto (se aceptan y firman en block-B).
+Índice de los Architecture Decision Records del proyecto. Cada decisión vive en `docs/adr/`. Estado actual: aceptado (firmados en block-B, 2026-05-31).
 
 - [ADR-001: Stack del proyecto](docs/adr/ADR-001-stack.md)
 - [ADR-002: Agente único con varias tools](docs/adr/ADR-002-agente-unico.md)

@@ -1,7 +1,7 @@
 # ADR-004: Proveedor de datos de mercado
 
-**Estado:** propuesto (se firma en Fase 1)
-**Fecha:** <YYYY-MM-DD>
+**Estado:** aceptado (firmado en block-B 2026-05-31)
+**Fecha:** 2026-05-31
 **Tags:** tools, proveedores, datos-de-mercado
 
 ## Contexto y problema

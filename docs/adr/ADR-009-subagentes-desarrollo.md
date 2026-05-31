@@ -1,7 +1,7 @@
 # ADR-009: Subagentes de Claude Code como herramienta de desarrollo
 
-**Estado:** propuesto (se firma en Fase 1, block-B; los subagentes aparecen en block-F y block-H)
-**Fecha:** <YYYY-MM-DD>
+**Estado:** aceptado (firmado en block-B 2026-05-31; los subagentes aparecen en block-F y block-H)
+**Fecha:** 2026-05-31
 **Tags:** subagentes, desarrollo, claude-code, paralelismo
 
 ## Contexto y problema

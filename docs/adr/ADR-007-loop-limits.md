@@ -1,7 +1,7 @@
 # ADR-007: Límites del loop, tope de turnos y presupuesto
 
-**Estado:** propuesto (se firma en Fase 1, block-B; se implementa en Fase 3, block-E)
-**Fecha:** <YYYY-MM-DD>
+**Estado:** aceptado (firmado en block-B 2026-05-31; se implementa en Fase 3, block-E)
+**Fecha:** 2026-05-31
 **Tags:** loop, guardrails, coste, presupuesto
 
 ## Contexto y problema

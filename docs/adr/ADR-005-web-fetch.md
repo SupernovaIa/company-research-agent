@@ -1,7 +1,7 @@
 # ADR-005: Extracción de URL con `web_fetch` (server-side)
 
-**Estado:** propuesto (se firma en Fase 1)
-**Fecha:** <YYYY-MM-DD>
+**Estado:** aceptado (firmado en block-B 2026-05-31)
+**Fecha:** 2026-05-31
 **Tags:** tools, fetch, web
 
 ## Contexto y problema

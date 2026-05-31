@@ -1,7 +1,7 @@
 # ADR-003: Búsqueda web server-side vs client-side
 
-**Estado:** propuesto (se firma en Fase 1, block-B; se implementa en Fase 2, block-C)
-**Fecha:** <YYYY-MM-DD>
+**Estado:** aceptado (firmado en block-B 2026-05-31; se implementa en Fase 2, block-C)
+**Fecha:** 2026-05-31
 **Tags:** tools, proveedores, busqueda-web
 
 ## Contexto y problema

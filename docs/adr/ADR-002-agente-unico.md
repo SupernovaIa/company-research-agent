@@ -1,7 +1,7 @@
 # ADR-002: Agente único con varias tools
 
-**Estado:** propuesto (se firma en Fase 1, block-B)
-**Fecha:** <YYYY-MM-DD>
+**Estado:** aceptado (firmado en block-B 2026-05-31)
+**Fecha:** 2026-05-31
 **Tags:** arquitectura, diseño-agente
 
 ## Contexto y problema

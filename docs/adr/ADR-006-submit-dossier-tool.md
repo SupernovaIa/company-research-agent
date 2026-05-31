@@ -1,7 +1,7 @@
 # ADR-006: Output estructurado vía tool de submit
 
-**Estado:** propuesto (se firma en Fase 1, block-B; se implementa en Fase 2, block-D)
-**Fecha:** <YYYY-MM-DD>
+**Estado:** aceptado (firmado en block-B 2026-05-31; se implementa en Fase 2, block-D)
+**Fecha:** 2026-05-31
 **Tags:** output-estructurado, schema, dossier
 
 ## Contexto y problema

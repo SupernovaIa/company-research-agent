@@ -1,0 +1,364 @@
+{
+  "$defs": {
+    "Company": {
+      "description": "Identity of the researched company.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "ticker": {
+          "title": "Ticker",
+          "type": "string"
+        },
+        "exchange": {
+          "title": "Exchange",
+          "type": "string"
+        },
+        "sector": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sector"
+        },
+        "website": {
+          "anyOf": [
+            {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Website"
+        }
+      },
+      "required": [
+        "name",
+        "ticker",
+        "exchange"
+      ],
+      "title": "Company",
+      "type": "object"
+    },
+    "Fact": {
+      "description": "A qualitative key fact.\n\nCarries exactly one of:\n\n- ``source_id``: the fact was retrieved from the web and cites a ``Source``.\n- ``basis``: the fact was derived from a deterministic computation. The\n  ``basis`` describes the derivation and references the dossier data it was\n  computed from (e.g. ``\"computed from market_data.week52_high\"``).",
+      "properties": {
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Id"
+        },
+        "basis": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Basis"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "title": "Fact",
+      "type": "object"
+    },
+    "MarketData": {
+      "description": "Structured market data from the provider (yfinance, ADR-004).\n\nCarries ``source`` + ``as_of`` and never a ``source_id``: it is a structured\nsource of truth, not cited web prose. Fields with no datum are ``null`` and\nare never invented; European listings tend to carry more ``null`` (ADR-004).",
+      "properties": {
+        "price": {
+          "title": "Price",
+          "type": "number"
+        },
+        "currency": {
+          "title": "Currency",
+          "type": "string"
+        },
+        "change_pct": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Change Pct"
+        },
+        "market_cap": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Market Cap"
+        },
+        "pe_ratio": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pe Ratio"
+        },
+        "forward_pe": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Forward Pe"
+        },
+        "eps": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Eps"
+        },
+        "dividend_yield": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dividend Yield"
+        },
+        "week52_high": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Week52 High"
+        },
+        "week52_low": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Week52 Low"
+        },
+        "as_of": {
+          "format": "date-time",
+          "title": "As Of",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "price",
+        "currency",
+        "as_of",
+        "source"
+      ],
+      "title": "MarketData",
+      "type": "object"
+    },
+    "NewsItem": {
+      "description": "A recent news item. Always cites a ``source_id``.",
+      "properties": {
+        "headline": {
+          "title": "Headline",
+          "type": "string"
+        },
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "headline",
+        "date",
+        "summary",
+        "source_id"
+      ],
+      "title": "NewsItem",
+      "type": "object"
+    },
+    "RunMeta": {
+      "description": "Operational metadata of the execution that produced this dossier.",
+      "properties": {
+        "model": {
+          "title": "Model",
+          "type": "string"
+        },
+        "cost_usd": {
+          "minimum": 0,
+          "title": "Cost Usd",
+          "type": "number"
+        },
+        "turns": {
+          "minimum": 0,
+          "title": "Turns",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "model",
+        "cost_usd",
+        "turns"
+      ],
+      "title": "RunMeta",
+      "type": "object"
+    },
+    "Source": {
+      "description": "A cited source. Every ``source_id`` referenced in the dossier resolves\nto one of these.",
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "url": {
+          "format": "uri",
+          "maxLength": 2083,
+          "minLength": 1,
+          "title": "Url",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "accessed_at": {
+          "format": "date-time",
+          "title": "Accessed At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "url",
+        "title",
+        "accessed_at"
+      ],
+      "title": "Source",
+      "type": "object"
+    }
+  },
+  "description": "The agent output contract.\n\nA point-in-time, citable snapshot (ADR-012, stateless by design). Cross-field\nvalidation enforces that every cited ``source_id`` resolves to a listed\n``Source`` and that every computed ``Fact`` resolves its provenance to data\npresent in the dossier.",
+  "properties": {
+    "schema_version": {
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "company": {
+      "$ref": "#/$defs/Company"
+    },
+    "market_data": {
+      "$ref": "#/$defs/MarketData"
+    },
+    "business_overview": {
+      "title": "Business Overview",
+      "type": "string"
+    },
+    "key_facts": {
+      "items": {
+        "$ref": "#/$defs/Fact"
+      },
+      "title": "Key Facts",
+      "type": "array"
+    },
+    "recent_news": {
+      "items": {
+        "$ref": "#/$defs/NewsItem"
+      },
+      "title": "Recent News",
+      "type": "array"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/Source"
+      },
+      "title": "Sources",
+      "type": "array"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "run": {
+      "$ref": "#/$defs/RunMeta"
+    }
+  },
+  "required": [
+    "company",
+    "market_data",
+    "business_overview",
+    "generated_at",
+    "run"
+  ],
+  "title": "CompanyDossier",
+  "type": "object"
+}
