@@ -96,6 +96,10 @@ def main() -> int:
             "end_turn": "The model stopped without calling submit_dossier.",
             "hard_limit": "The loop hit the turn limit without calling submit_dossier.",
             "budget_exceeded": "The execution budget was exceeded before a dossier was submitted.",
+            "guardrail_blocked": (
+                "The output guardrail blocked the dossier (injected content, leaked "
+                "prompt, or out-of-scope verdict). See the guardrail reason above."
+            ),
         }
         reason = _reasons.get(
             result.terminated_by,

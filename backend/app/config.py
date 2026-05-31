@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     agent_max_turns: int = 20    # hard limit; recalibrate against eval set in block-H
     agent_budget_usd: float = 0.50  # ADR-007 range 0.30–0.80; provisional for block-E
     agent_timeout_s: int = 120   # Anthropic client timeout per request (seconds)
+    # Output guardrail classifier (Spec 04, block-F): dedicated client, short call.
+    classifier_timeout_s: int = 15  # Haiku classifier timeout per request (seconds)
 
     # --- Serving ---------------------------------------------------------------
     rate_limit_per_minute: int = 10

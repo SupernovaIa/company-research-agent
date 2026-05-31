@@ -74,6 +74,28 @@ class _RunTrace:
         except Exception:
             logger.debug("Langfuse record_turn failed", exc_info=True)
 
+    def record_guardrail(self, verdict: Any) -> None:
+        """Record the output-guardrail verdict as a nested event on the trace.
+
+        Makes which defense layer acted (heuristic / classifier) visible in the
+        trace, so the red-team runner can confirm per-layer blocking (spec 09).
+        """
+        if self._root is None:
+            return
+        try:
+            ev = self._root.start_observation(
+                name="output_guardrail",
+                as_type="span",
+                metadata={
+                    "allowed": verdict.allowed,
+                    "layer": verdict.layer,
+                    "reason": verdict.reason,
+                },
+            )
+            ev.end()
+        except Exception:
+            logger.debug("Langfuse record_guardrail failed", exc_info=True)
+
     def finish(self, terminated_by: str, cost_usd: float, turns: int) -> None:
         if self._root is None:
             return

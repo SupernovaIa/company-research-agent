@@ -24,6 +24,8 @@ import anthropic
 
 from app.config import settings
 from app.dossier.models import CompanyDossier
+from app.guardrails.classifier import classify_dossier
+from app.guardrails.injection import wrap_external_content
 from app.observability.tracer import get_tracer
 from app.tools.client import ToolResult, dispatch_client_tool, is_terminal_tool
 from app.tools.inventory import AGENT_MODEL, TOOLS
@@ -59,7 +61,7 @@ class LoopResult:
     dossier: CompanyDossier | None
     turns: int
     cost_usd: float
-    terminated_by: str  # "submit_dossier" | "end_turn" | "hard_limit" | "submit_dossier_failed" | "budget_exceeded"
+    terminated_by: str  # "submit_dossier" | "end_turn" | "hard_limit" | "submit_dossier_failed" | "budget_exceeded" | "guardrail_blocked"
 
 
 def _load_system_prompt() -> str:
@@ -245,11 +247,16 @@ def run(
                 # server-side), skipping the user message avoids an empty content:[]
                 # which the Anthropic API rejects with a 400.
                 if tool_uses:
+                    # Untrusted external content enters the context wrapped in
+                    # explicit delimiters and sanitized against boundary forgery
+                    # (layer L1, indirect prompt injection defense; spec 04/09).
                     tool_result_content = [
                         {
                             "type": "tool_result",
                             "tool_use_id": tu.id,
-                            "content": json.dumps(results[tu.id].json_response),
+                            "content": wrap_external_content(
+                                tu.name, json.dumps(results[tu.id].json_response)
+                            ),
                         }
                         for tu in tool_uses
                     ]
@@ -264,7 +271,7 @@ def run(
                             # Overwrite loop-authoritative fields. The model
                             # self-reports these but its estimates are unreliable;
                             # the loop has the ground truth for all four.
-                            dossier = result.dossier.model_copy(
+                            candidate = result.dossier.model_copy(
                                 update={
                                     "generated_at": datetime.now(tz=timezone.utc),
                                     "run": result.dossier.run.model_copy(
@@ -276,7 +283,24 @@ def run(
                                     ),
                                 }
                             )
-                            terminated_by = "submit_dossier"
+                            # Output guardrail (layer L3, spec 04/09): a schema-valid
+                            # dossier can still carry an injected verdict or leaked
+                            # prompt. Classify before releasing; block if unsafe.
+                            verdict = classify_dossier(
+                                candidate.model_dump(mode="json")
+                            )
+                            run_trace.record_guardrail(verdict)
+                            if verdict.allowed:
+                                dossier = candidate
+                                terminated_by = "submit_dossier"
+                            else:
+                                logger.warning(
+                                    "Output guardrail blocked dossier (%s): %s",
+                                    verdict.layer,
+                                    verdict.reason,
+                                )
+                                dossier = None
+                                terminated_by = "guardrail_blocked"
                         elif submit_attempts > 1:
                             # ADR-006: one retry allowed; persistent failure stops loop.
                             logger.warning(
@@ -291,7 +315,11 @@ def run(
                             )
                         break  # only one submit_dossier per turn expected
 
-                if terminated_by in ("submit_dossier", "submit_dossier_failed"):
+                if terminated_by in (
+                    "submit_dossier",
+                    "submit_dossier_failed",
+                    "guardrail_blocked",
+                ):
                     break
 
             elif response.stop_reason == "max_tokens":

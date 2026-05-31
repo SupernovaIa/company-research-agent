@@ -1,6 +1,6 @@
 # Spec 04 · Guardrails del loop
 
-**Estado:** aceptada parcialmente (guardrails operativos implementados en block-E; indirect prompt injection y clasificador de output quedan para block-F)
+**Estado:** aceptada (guardrails operativos en block-E; indirect prompt injection y clasificador de output en block-F, 2026-05-31)
 **Fase:** 3 · Guardrails + red team (block-E guardrails operativos, block-F inyección y red team)
 **Dependencias:** Spec 03 (loop), Spec 02 (tools), Spec 01 (schema del Dossier)
 
@@ -36,6 +36,17 @@ Blindar el loop con timeouts por tool, reintentos con backoff, presupuesto por e
 - Un dossier que no valida dispara un reintento; tras el segundo fallo devuelve error con el parcial.
 - Ninguna tool tiene efectos secundarios sobre tus sistemas o datos (escritura en BBDD, envío); los efectos de la code execution tool quedan confinados a su sandbox efímera.
 - Un intento de que el agente use la code execution tool para especular, valorar o recomendar lo bloquean el system prompt y el clasificador de output.
+
+## Estado de la capa de inyección (block-F)
+
+La defensa en capas frente a indirect prompt injection queda implementada y verificada:
+
+- **L1 · Delimitadores.** El contenido de tools entra envuelto en `<<UNTRUSTED_TOOL_CONTENT>> … <<END_UNTRUSTED_TOOL_CONTENT>>` y se sanitiza contra falsificación de la frontera y de turnos (`guardrails/injection.wrap_external_content`, cableado en `agent/loop.py`).
+- **L2 · System prompt.** Sección "Untrusted tool content" en `prompts/system_prompt_v1.md`: marca el contenido externo como datos, prohíbe obedecer instrucciones embebidas, revelar el prompt, cambiar de tarea o emitir veredictos.
+- **L3 · Clasificador de output.** `guardrails/classifier.py`: pre-filtro determinista (`heuristic_scan`) + backstop semántico con **Haiku 4.5** (`GUARDRAIL_MODEL`), cliente dedicado con su propio timeout (`classifier_timeout_s`). El loop descarta el dossier (`terminated_by="guardrail_blocked"`) si no pasa.
+- **L4 · Mínimo privilegio.** Tools de solo lectura; ninguna capacidad con efectos secundarios (ADR-006, ADR-009, ADR-011).
+
+Validación: checklist de red team (Spec 09) con bloqueo ≥ 90% y cada capa bloqueando su payload; ver ADR-013.
 
 ## Riesgos
 

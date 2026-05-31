@@ -10,6 +10,40 @@ Próximas entradas por sesión.
 
 ---
 
+## [block-F] - 2026-05-31
+
+### Añadido
+
+- **Defensa en capas frente a indirect prompt injection** (Spec 04, Spec 09, ADR-013):
+  - **L1 · Delimitadores** (`backend/app/guardrails/injection.py`): `wrap_external_content` envuelve el contenido de tools en `<<UNTRUSTED_TOOL_CONTENT>> … <<END_UNTRUSTED_TOOL_CONTENT>>` y sanitiza la falsificación de la frontera y de turnos. Cableado en `agent/loop.py`.
+  - **L2 · System prompt** (`prompts/system_prompt_v1.md`): sección "Untrusted tool content (security)" que marca el contenido externo como datos y prohíbe obedecer órdenes embebidas, filtrar el prompt, cambiar de tarea o emitir veredictos.
+  - **L3 · Clasificador de output** (`backend/app/guardrails/classifier.py`): pre-filtro determinista (`heuristic_scan`) + backstop semántico con **Haiku 4.5** (`GUARDRAIL_MODEL`), cliente dedicado con `classifier_timeout_s`. El loop descarta el dossier inseguro (`terminated_by="guardrail_blocked"`). Degrada sin API key (modo solo-heurístico) y ante error del clasificador.
+  - **L4 · Mínimo privilegio**: inventario read-only y `capability_is_available` (ADR-006, ADR-009, ADR-011).
+- **Harness de red team** (`backend/app/redteam/`): `payloads.py` (24 payloads, fuente de verdad), `runner.py` (`THRESHOLD=0.90`, reporte PASS/FAIL y cobertura por capa), `run.py` (`python -m app.redteam.run [--ci|--json]`, exit 1 si < umbral).
+- **Checklist de red team** (`security/red-team-checklist.md`): 24 payloads con OWASP LLM Top 10 (LLM01/02/05/06/09), categoría, vector, capa esperada y resultado. Sincronía con `payloads.py` verificada por test.
+- **Slash command `/redteam`**: cableado al runner determinista (gate canónico) y al modo live, delegando en el subagente `redteam-runner`.
+- **Observabilidad** (`observability/tracer.py`): `record_guardrail` añade el span `output_guardrail` (capa, allowed, reason) a la traza.
+- **`terminated_by="guardrail_blocked"`**: nuevo estado en `LoopResult` y en el mapa de mensajes de `run.py`.
+- **`classifier_timeout_s=15`** en `config.py`.
+- **Tests** (84 total, todos verdes): `test_injection.py`, `test_classifier.py`, `test_redteam.py` y `conftest.py` (fixture autouse que neutraliza la llamada Haiku en los tests del loop).
+
+### Cambiado
+
+- **`specs/09-security-redteam.md`**: `pre-construida` → `aceptada` (implementada en block-F).
+- **`specs/04-guardrails.md`**: `aceptada parcialmente` → `aceptada` (capa de inyección y clasificador de output implementados).
+
+### Decisiones documentadas
+
+- **ADR-013**: defensa en capas frente a indirect prompt injection y red team; gate determinista/offline como canónico, backstop semántico Haiku en modo live con evidencia en Langfuse; mapeo OWASP LLM Top 10.
+
+### Notas
+
+- Verificación en vivo: `python -m app.redteam.run` → **24/24 PASS, bloqueo 100.0%** (umbral 90%), cada capa bloquea su payload (`{L1:6, L2:5, L3:7, L4:6}`).
+- Suite completa: 84 passed (`--ignore=tests/evals`).
+- Coste: ~$0 USD; el gate canónico es determinista (sin llamadas al modelo).
+
+---
+
 ## [block-E] - 2026-05-31
 
 ### Añadido
