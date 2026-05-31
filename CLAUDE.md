@@ -79,7 +79,7 @@ Aplica a cada bloque de trabajo (block-A … block-I). Esto es transversal: vale
 - **Qué no delega el agente:** alcance y output, schema de tools y del dossier, elección de proveedores, política de guardrails, tope de turnos y presupuesto. Esas decisiones las firma el humano.
 - **Causa raíz contrastada, no de memoria.** Ante un bug o hallazgo, el primer diagnóstico puede estar mal con confianza. Verifica contra fuente autoritativa (Context7 o doc oficial) antes de actuar.
 - **Vigilancia de coste:** cada ejecución del agente gasta API real; respeta el tope por ejecución también en desarrollo.
-- **Cierre de un bloque:** `/close-session` corre los checks del CI en local, actualiza `SESSION.md` y `CHANGELOG.md`, y prepara el commit `chore(session): close block-X`. El agente abre la PR y para. El merge (squash) y el tag son acción humana.
+- **Cierre de un bloque:** `/close-session` corre los checks del CI en local, actualiza `SESSION.md` y `CHANGELOG.md`, y prepara el commit `chore(session): close block-X`. El agente abre la PR; tras abrirla, corre la skill `review` sobre ella, postea el resultado como comentario en la PR y para. El agente no mergea. El merge (squash) y el tag son acción humana.
 
 ### SDD ligero
 
