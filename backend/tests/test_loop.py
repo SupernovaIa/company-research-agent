@@ -441,25 +441,84 @@ def test_dispatch_client_tool_submit_dossier_unexpected_error_does_not_raise():
 # Fix 2: as_of is a real ISO datetime, not the literal string "now"
 # ---------------------------------------------------------------------------
 
+_MOCK_AAPL_INFO = {
+    "currentPrice": 189.5,
+    "currency": "USD",
+    "regularMarketChangePercent": 0.5,
+    "marketCap": 2_900_000_000_000,
+    "trailingPE": 30.2,
+    "forwardPE": 27.1,
+    "trailingEps": 6.35,
+    "dividendYield": 0.005,
+    "fiftyTwoWeekHigh": 199.0,
+    "fiftyTwoWeekLow": 164.0,
+}
+
+
 def test_get_market_data_as_of_is_iso_datetime():
     """get_market_data returns as_of as a valid ISO 8601 datetime, not 'now'."""
-    mock_info = MagicMock()
-    mock_info.last_price = 100.0
-    mock_info.currency = "USD"
-    mock_info.market_cap = 1_000_000_000.0
-    mock_info.year_high = 110.0
-    mock_info.year_low = 90.0
-
     with patch("yfinance.Ticker") as mock_ticker_cls:
-        mock_ticker_cls.return_value.fast_info = mock_info
+        mock_ticker_cls.return_value.info = _MOCK_AAPL_INFO
         result = _get_market_data({"ticker": "AAPL"})
 
     assert "as_of" in result.json_response
     as_of = result.json_response["as_of"]
     assert as_of != "now", "'now' literal must not appear; expected ISO 8601 string"
-    # Must be parseable as a datetime.
     parsed = datetime.fromisoformat(as_of)
     assert parsed.tzinfo is not None, "as_of must be timezone-aware"
+
+
+def test_get_market_data_all_fields_populated():
+    """get_market_data returns all MarketData fields when yfinance provides them."""
+    with patch("yfinance.Ticker") as mock_ticker_cls:
+        mock_ticker_cls.return_value.info = _MOCK_AAPL_INFO
+        result = _get_market_data({"ticker": "AAPL"})
+
+    r = result.json_response
+    assert r["price"] == pytest.approx(189.5)
+    assert r["currency"] == "USD"
+    assert r["change_pct"] == pytest.approx(0.5)
+    assert r["market_cap"] == pytest.approx(2_900_000_000_000)
+    assert r["pe_ratio"] == pytest.approx(30.2)
+    assert r["forward_pe"] == pytest.approx(27.1)
+    assert r["eps"] == pytest.approx(6.35)
+    assert r["dividend_yield"] == pytest.approx(0.005)
+    assert r["week52_high"] == pytest.approx(199.0)
+    assert r["week52_low"] == pytest.approx(164.0)
+    assert r["source"] == "Yahoo Finance"
+
+
+def test_get_market_data_invalid_ticker_returns_recoverable_error():
+    """A ticker with no price data returns recoverable=True, not an exception."""
+    with patch("yfinance.Ticker") as mock_ticker_cls:
+        mock_ticker_cls.return_value.info = {}  # no price fields
+        result = _get_market_data({"ticker": "ZZZZ"})
+
+    assert "error" in result.json_response
+    assert result.json_response["recoverable"] is True
+
+
+def test_get_market_data_missing_ticker_is_not_recoverable():
+    """Empty ticker input returns a non-recoverable error immediately."""
+    result = _get_market_data({"ticker": ""})
+    assert "error" in result.json_response
+    assert result.json_response["recoverable"] is False
+
+
+def test_get_market_data_null_fields_are_none():
+    """Fields absent from yfinance info come back as None (not missing keys)."""
+    minimal_info = {"currentPrice": 50.0, "currency": "EUR"}
+    with patch("yfinance.Ticker") as mock_ticker_cls:
+        mock_ticker_cls.return_value.info = minimal_info
+        result = _get_market_data({"ticker": "SAP.DE"})
+
+    r = result.json_response
+    assert r["price"] == pytest.approx(50.0)
+    assert r["change_pct"] is None
+    assert r["pe_ratio"] is None
+    assert r["forward_pe"] is None
+    assert r["eps"] is None
+    assert r["dividend_yield"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -516,3 +575,74 @@ def test_run_max_turns_parameter_overrides_baked_limit():
 
     assert result.turns == 2
     assert result.terminated_by == "hard_limit"
+
+
+# ---------------------------------------------------------------------------
+# Block-D: submit_dossier retry logic (ADR-006, Spec 05)
+# ---------------------------------------------------------------------------
+
+def test_loop_submit_dossier_fails_twice_terminates_with_failed_status():
+    """submit_dossier fails twice → loop exits with terminated_by=submit_dossier_failed."""
+    bad_dossier = {"company": {"name": "Broken"}}  # missing required fields
+    submit_block = _FakeToolUseBlock(id="s1", name="submit_dossier", input=bad_dossier)
+    submit_block2 = _FakeToolUseBlock(id="s2", name="submit_dossier", input=bad_dossier)
+
+    responses = [
+        _FakeResponse(stop_reason="tool_use", content=[submit_block]),
+        _FakeResponse(stop_reason="tool_use", content=[submit_block2]),
+        _FakeResponse(stop_reason="end_turn"),  # should never be reached
+    ]
+    with _patch_client(responses):
+        result = run("AAPL")
+
+    assert result.terminated_by == "submit_dossier_failed"
+    assert result.dossier is None
+
+
+def test_loop_run_metadata_is_injected_by_loop():
+    """run.model, cost_usd and turns are overwritten by loop with actual values."""
+    from app.tools.inventory import AGENT_MODEL
+
+    dossier_data = _valid_dossier_dict()
+    dossier_data["run"]["model"] = "wrong-model-from-llm"
+    dossier_data["run"]["cost_usd"] = 999.0
+    dossier_data["run"]["turns"] = 999
+
+    submit_block = _FakeToolUseBlock(id="sub1", name="submit_dossier", input=dossier_data)
+    responses = [_FakeResponse(stop_reason="tool_use", content=[submit_block])]
+
+    with _patch_client(responses):
+        result = run("AAPL")
+
+    assert result.terminated_by == "submit_dossier"
+    assert result.dossier is not None
+    assert result.dossier.run.model == AGENT_MODEL
+    assert result.dossier.run.turns == 1  # actual turn count
+    assert result.dossier.run.cost_usd != 999.0  # replaced with actual cost
+
+
+# ---------------------------------------------------------------------------
+# Block-D: get_market_data yfinance timeout (Spec 02)
+# ---------------------------------------------------------------------------
+
+def test_get_market_data_timeout_returns_recoverable_error():
+    """A yfinance call that hangs past the timeout returns a recoverable error."""
+    from concurrent.futures import TimeoutError as FuturesTimeoutError
+    from concurrent.futures import ThreadPoolExecutor as RealTPE
+
+    class _TimingOutExecutor:
+        """Context-manager executor whose futures always raise TimeoutError."""
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def submit(self, fn, *args, **kwargs):  # noqa: ARG002
+            future = MagicMock()
+            future.result.side_effect = FuturesTimeoutError()
+            return future
+
+    with patch("app.tools.client.ThreadPoolExecutor", return_value=_TimingOutExecutor()):
+        result = _get_market_data({"ticker": "AAPL"})
+
+    assert "error" in result.json_response
+    assert result.json_response["recoverable"] is True

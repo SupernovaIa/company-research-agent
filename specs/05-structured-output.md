@@ -1,6 +1,6 @@
 # Spec 05 · Output estructurado
 
-**Estado:** pre-construida (se implementa en Fase 2, block-D)
+**Estado:** aceptada (implementada en block-D 2026-05-31)
 **Fase:** 2 · Loop + datos + output (block-D)
 **Dependencias:** Spec 01 (schema del Dossier), Spec 03 (loop), ADR-006 (submit-dossier-tool)
 

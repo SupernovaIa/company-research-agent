@@ -58,7 +58,7 @@ class LoopResult:
     dossier: CompanyDossier | None
     turns: int
     cost_usd: float
-    terminated_by: str  # "submit_dossier" | "end_turn" | "hard_limit"
+    terminated_by: str  # "submit_dossier" | "end_turn" | "hard_limit" | "submit_dossier_failed"
 
 
 def _load_system_prompt() -> str:
@@ -169,6 +169,8 @@ def run(
     dossier: CompanyDossier | None = None
     terminated_by = "hard_limit"
     turn = 0
+    # ADR-006: allow exactly one retry when submit_dossier validation fails.
+    submit_attempts = 0
 
     with tracer.start(ticker) as run_trace:
         for turn in range(1, hard_limit + 1):
@@ -234,20 +236,41 @@ def run(
                     ]
                     messages.append({"role": "user", "content": tool_result_content})
 
-                # Detect successful dossier submission.
+                # Detect successful dossier submission (ADR-006).
                 for tu in tool_uses:
                     if is_terminal_tool(tu.name):
                         result = results[tu.id]
+                        submit_attempts += 1
                         if result.success and result.dossier is not None:
-                            dossier = result.dossier
+                            # Overwrite run metadata with actual loop values.
+                            # The model self-reports these fields but its estimates
+                            # are unreliable; the loop has the ground truth.
+                            patched_run = result.dossier.run.model_copy(
+                                update={
+                                    "model": AGENT_MODEL,
+                                    "cost_usd": total_cost,
+                                    "turns": turn,
+                                }
+                            )
+                            dossier = result.dossier.model_copy(
+                                update={"run": patched_run}
+                            )
                             terminated_by = "submit_dossier"
+                        elif submit_attempts > 1:
+                            # ADR-006: one retry allowed; persistent failure stops loop.
+                            logger.warning(
+                                "submit_dossier failed validation on retry %d; "
+                                "stopping loop",
+                                submit_attempts,
+                            )
+                            terminated_by = "submit_dossier_failed"
                         else:
                             logger.warning(
                                 "submit_dossier failed validation; model will retry"
                             )
                         break  # only one submit_dossier per turn expected
 
-                if terminated_by == "submit_dossier":
+                if terminated_by in ("submit_dossier", "submit_dossier_failed"):
                     break
 
             elif response.stop_reason == "max_tokens":
