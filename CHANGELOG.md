@@ -10,6 +10,38 @@ Próximas entradas por sesión.
 
 ---
 
+## [block-D] - 2026-05-31
+
+### Añadido
+
+- **`get_market_data` de producción** (`backend/app/tools/client.py`): implementación completa vía `yf.Ticker(ticker).info`. Devuelve todos los campos de `MarketData`: `price`, `currency`, `change_pct`, `market_cap`, `pe_ratio`, `forward_pe`, `eps`, `dividend_yield`, `week52_high`, `week52_low`, `as_of`, `source`. Campos sin dato → `null`. Timeout de 10 s con `ThreadPoolExecutor.future.result(timeout=...)` que devuelve error recuperable en lugar de colgar el loop. Ticker vacío → error no recuperable.
+- **Retry limitado de `submit_dossier`** (ADR-006): el loop rastrea `submit_attempts`; si `submit_dossier` falla una segunda vez se corta con `terminated_by="submit_dossier_failed"`. Un primer fallo devuelve el error de validación al modelo como `tool_result` para que lo corrija (un reintento, no indefinidos).
+- **Inyección de metadatos reales en `run`**: el loop sobreescribe `run.model`, `run.cost_usd` y `run.turns` con los valores reales de la ejecución tras una validación exitosa. El modelo se auto-reportaba con valores inventados.
+- **Estado `submit_dossier_failed`** en `LoopResult.terminated_by`: distingue cierre con dossier válido de cierre por fallo persistente de validación.
+- **`_to_float` helper**: coerción null-safe de valores de yfinance (algunos campos llegan como `None` o tipos no numéricos).
+- **Tests de block-D** (`backend/tests/test_loop.py`): 12 nuevos casos — todos los campos de `MarketData` con mock, ticker inválido → error recuperable, ticker vacío → no recuperable, campos `null` en ticker europeo, doble fallo `submit_dossier` → `submit_dossier_failed`, inyección de `run.model/cost_usd/turns`, timeout simulado con `FuturesTimeoutError`.
+
+### Cambiado
+
+- **`_get_market_data`**: migrado de `Ticker.fast_info` (solo precio básico) a `Ticker.info` (dict completo) para cubrir todos los campos del contrato `MarketData`.
+- **`source`** en market data: `"Yahoo Finance"` (nombre del proveedor real) en lugar de `"yfinance"` (nombre de la librería).
+- **`specs/05-structured-output.md`**: estado actualizado de `pre-construida` a `aceptada (implementada en block-D 2026-05-31)`.
+- **Tests de block-C actualizados**: `test_get_market_data_as_of_is_iso_datetime` reescrito para mockear `Ticker.info` como dict (en lugar de `fast_info` como objeto).
+
+### Decisiones documentadas
+
+- Inyección de `run.cost_usd` y `run.turns` además de `run.model`: los tres campos del `RunMeta` son metadatos de la ejecución que el loop conoce con precisión y el modelo no.
+- `source = "Yahoo Finance"`: el label visible en el dossier es el proveedor de datos, no la librería cliente.
+- Un solo reintento de `submit_dossier` (ADR-006): mantiene el tope de turnos y el presupuesto sin permitir bucles infinitos de corrección.
+
+### Notas
+
+- Corrida real AAPL: 2 turnos, $0.0663 USD, `terminated_by=submit_dossier`. Todos los campos de `MarketData` poblados (price=312.06, currency=USD, change_pct=-0.14, market_cap=4.58T, pe_ratio=37.73, forward_pe=32.48, eps=8.27, dividend_yield=0.35, week52_high=315.0, week52_low=195.07).
+- Suite completa: 48 passed (12 nuevos + 36 de bloques anteriores).
+- Coste de la sesión: ~$0.07 USD (1 corrida real sobre AAPL).
+
+---
+
 ## [block-C] - 2026-05-31
 
 ### Añadido
