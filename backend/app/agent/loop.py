@@ -59,7 +59,7 @@ class LoopResult:
     dossier: CompanyDossier | None
     turns: int
     cost_usd: float
-    terminated_by: str  # "submit_dossier" | "end_turn" | "hard_limit" | "submit_dossier_failed"
+    terminated_by: str  # "submit_dossier" | "end_turn" | "hard_limit" | "submit_dossier_failed" | "budget_exceeded"
 
 
 def _load_system_prompt() -> str:
@@ -144,8 +144,11 @@ def run(
     # api_key from settings (loaded from the repo-root .env via pydantic-settings).
     # Falls back to the ANTHROPIC_API_KEY env var if settings.anthropic_api_key is empty,
     # which is the default SDK behaviour when api_key=None.
+    # timeout per API request (ADR-007, Spec 04): agent and classifier use separate
+    # clients with different timeout profiles; agent uses agent_timeout_s.
     client = anthropic.Anthropic(
-        api_key=settings.anthropic_api_key or None
+        api_key=settings.anthropic_api_key or None,
+        timeout=settings.agent_timeout_s,
     )
     tracer = get_tracer()
 
@@ -167,6 +170,7 @@ def run(
     ]
 
     total_cost = 0.0
+    budget_usd = settings.agent_budget_usd
     dossier: CompanyDossier | None = None
     terminated_by = "hard_limit"
     turn = 0
@@ -193,6 +197,20 @@ def run(
             turn_cost = _estimate_cost(response.usage)
             total_cost += turn_cost
             run_trace.record_turn(turn, response, turn_cost)
+
+            # Hard budget cut (ADR-007, Spec 04): stop immediately if spend exceeds
+            # the per-execution cap. Check after accumulating so the final turn is
+            # counted; do not check before the first response (turn=1) so we always
+            # complete at least one turn.
+            if total_cost >= budget_usd:
+                logger.warning(
+                    "Budget cap $%.2f exceeded (spent $%.4f) at turn %d; stopping loop",
+                    budget_usd,
+                    total_cost,
+                    turn,
+                )
+                terminated_by = "budget_exceeded"
+                break
 
             cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
             cache_created = getattr(response.usage, "cache_creation_input_tokens", 0) or 0

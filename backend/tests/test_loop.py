@@ -681,3 +681,97 @@ def test_loop_generated_at_is_injected_by_loop():
     assert result.dossier is not None
     assert result.dossier.generated_at >= before
     assert result.dossier.generated_at <= after
+
+
+# ---------------------------------------------------------------------------
+# Block-E: budget hard cut (Spec 04, ADR-007)
+# ---------------------------------------------------------------------------
+
+def test_loop_budget_exceeded_stops_loop():
+    """A loop whose per-turn cost exceeds the budget cap terminates with budget_exceeded."""
+    from unittest.mock import patch as _patch
+    from app.config import settings
+
+    tool_use_block = _FakeToolUseBlock(id="t1", name="get_market_data", input={"ticker": "AAPL"})
+    # Produce enough fake responses; the budget check must stop the loop before exhausting them.
+    responses = [
+        _FakeResponse(
+            stop_reason="tool_use",
+            content=[tool_use_block],
+            # 10M input + 10M output tokens → ~$180 per turn, well above any budget cap.
+            usage=_FakeUsage(input_tokens=10_000_000, output_tokens=10_000_000),
+        )
+    ] * 10
+
+    with _patch_client(responses):
+        # Use a very low budget so a single expensive turn blows past it.
+        with _patch.object(settings, "agent_budget_usd", 0.001):
+            result = run("AAPL")
+
+    assert result.terminated_by == "budget_exceeded"
+    assert result.dossier is None
+    # Loop must have stopped early — not gone the full default turn count.
+    assert result.turns < settings.agent_max_turns
+
+
+def test_loop_budget_not_exceeded_continues():
+    """A loop that stays within budget completes normally (terminated_by != budget_exceeded)."""
+    dossier_data = _valid_dossier_dict()
+    submit_block = _FakeToolUseBlock(id="sub1", name="submit_dossier", input=dossier_data)
+    # Small token counts → tiny cost well below any reasonable budget.
+    responses = [_FakeResponse(stop_reason="tool_use", content=[submit_block])]
+
+    with _patch_client(responses):
+        result = run("AAPL")
+
+    assert result.terminated_by == "submit_dossier"
+    assert result.dossier is not None
+
+
+# ---------------------------------------------------------------------------
+# Block-E: model client timeout is wired (Spec 04)
+# ---------------------------------------------------------------------------
+
+def test_loop_client_timeout_kwarg_is_passed():
+    """The Anthropic client is constructed with the agent_timeout_s from settings."""
+    from unittest.mock import patch as _patch, MagicMock
+    from app.config import settings
+
+    responses = [_FakeResponse(stop_reason="end_turn")]
+    captured_kwargs = {}
+
+    def _fake_anthropic(**kwargs):
+        captured_kwargs.update(kwargs)
+        mock = MagicMock()
+        mock.messages.create.side_effect = responses
+        return mock
+
+    with _patch("app.agent.loop.anthropic.Anthropic", side_effect=_fake_anthropic):
+        run("AAPL")
+
+    assert "timeout" in captured_kwargs, "anthropic.Anthropic must be called with timeout="
+    assert captured_kwargs["timeout"] == settings.agent_timeout_s
+
+
+# ---------------------------------------------------------------------------
+# Block-E: tool output Pydantic validation (Spec 04)
+# ---------------------------------------------------------------------------
+
+def test_get_market_data_output_validation_bad_shape_returns_recoverable_error():
+    """If the dict we build fails _MarketDataOutput validation, a recoverable error is returned."""
+    from pydantic import ValidationError as PydanticValidationError
+    from app.tools.client import _MarketDataOutput
+
+    # Build a real ValidationError by validating an empty dict against the schema.
+    try:
+        _MarketDataOutput.model_validate({})
+        raise AssertionError("Expected ValidationError from empty dict")
+    except PydanticValidationError as exc:
+        validation_error = exc
+
+    with patch("app.tools.client._MarketDataOutput.model_validate", side_effect=validation_error):
+        result = _get_market_data({"ticker": "AAPL"})
+
+    # When output validation fails, a recoverable error is returned.
+    assert "error" in result.json_response
+    assert result.json_response.get("recoverable") is True

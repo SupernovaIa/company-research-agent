@@ -95,6 +95,7 @@ def main() -> int:
             ),
             "end_turn": "The model stopped without calling submit_dossier.",
             "hard_limit": "The loop hit the turn limit without calling submit_dossier.",
+            "budget_exceeded": "The execution budget was exceeded before a dossier was submitted.",
         }
         reason = _reasons.get(
             result.terminated_by,

@@ -9,12 +9,20 @@ The distinction between client tools and server tools (ADR-003, ADR-005, ADR-011
 from __future__ import annotations
 
 import logging
+import socket
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import yfinance as yf
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
+from tenacity import (
+    RetryError,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from app.dossier.models import CompanyDossier
 
@@ -25,6 +33,36 @@ TERMINAL_TOOL = "submit_dossier"
 
 # Timeout for a single yfinance network call (seconds).
 _YFINANCE_TIMEOUT_S = 10
+
+
+# ---------------------------------------------------------------------------
+# Tool output schema for get_market_data (Spec 04)
+# Validates the dict we build before returning it to the loop, so any
+# mismatch with the expected shape is caught early and returned as a
+# recoverable error rather than silently injecting bad data to the context.
+# ---------------------------------------------------------------------------
+
+class _MarketDataOutput(BaseModel):
+    """Internal output schema for get_market_data.
+
+    Mirrors the MarketData dossier schema but allows currency to be None
+    (some European tickers omit it) and does not enforce the as_of datetime
+    type (the value is an ISO string at this layer, Pydantic coerces it).
+    """
+
+    ticker: str
+    price: float
+    currency: str | None
+    change_pct: float | None = None
+    market_cap: float | None = None
+    pe_ratio: float | None = None
+    forward_pe: float | None = None
+    eps: float | None = None
+    dividend_yield: float | None = None
+    week52_high: float | None = None
+    week52_low: float | None = None
+    as_of: str
+    source: str
 
 
 @dataclass
@@ -68,6 +106,10 @@ def _get_market_data(input_data: dict) -> ToolResult:
     Returns all MarketData fields; fields with no datum are null. On any provider
     failure returns {"error": ..., "recoverable": true} so the model can fall back
     to web search without breaking the loop (Spec 02).
+
+    Transient errors (connection, timeout, OSError) are retried up to 3 times
+    with exponential backoff (1s, 2s, 4s) via Tenacity (Spec 04). Non-transient
+    errors (e.g. invalid ticker / no price data) are not retried.
     """
     ticker = input_data.get("ticker", "").strip().upper()
     if not ticker:
@@ -75,6 +117,12 @@ def _get_market_data(input_data: dict) -> ToolResult:
             json_response={"error": "ticker is required", "recoverable": False}
         )
 
+    @retry(
+        retry=retry_if_exception_type((ConnectionError, OSError, socket.timeout)),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=4),
+        reraise=False,
+    )
     def _fetch() -> dict:
         info = yf.Ticker(ticker).info
         # Prefer currentPrice; fall back to regularMarketPrice. Use explicit
@@ -115,7 +163,30 @@ def _get_market_data(input_data: dict) -> ToolResult:
                     "recoverable": True,
                 }
             )
+        # Validate output shape before injecting into the loop context (Spec 04).
+        try:
+            _MarketDataOutput.model_validate(data)
+        except ValidationError as exc:
+            logger.warning(
+                "get_market_data output failed schema validation for %s: %s",
+                ticker,
+                exc,
+            )
+            return ToolResult(
+                json_response={
+                    "error": f"Market data output validation failed: {exc}",
+                    "recoverable": True,
+                }
+            )
         return ToolResult(json_response=data)
+    except RetryError as exc:
+        logger.warning(
+            "get_market_data exhausted retries for %s: %s", ticker, exc.last_attempt.exception()
+        )
+        return ToolResult(json_response={
+            "error": f"Market data provider unavailable after retries: {exc.last_attempt.exception()}",
+            "recoverable": True,
+        })
     except Exception as exc:
         logger.warning("get_market_data failed for %s: %s", ticker, exc)
         return ToolResult(json_response={"error": str(exc), "recoverable": True})

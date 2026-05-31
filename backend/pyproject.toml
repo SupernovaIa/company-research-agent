@@ -10,6 +10,8 @@ dependencies = [
     "langfuse>=2.0",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
+    "slowapi>=0.1",
+    "tenacity>=8.2",
     "uvicorn[standard]>=0.32",
     "yfinance>=0.2",
 ]
