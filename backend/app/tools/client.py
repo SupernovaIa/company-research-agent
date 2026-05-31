@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import yfinance as yf
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 from tenacity import (
     RetryError,
     retry,
@@ -24,7 +24,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from app.dossier.models import CompanyDossier
+from app.dossier.models import CompanyDossier, MarketData
 
 logger = logging.getLogger(__name__)
 
@@ -42,27 +42,19 @@ _YFINANCE_TIMEOUT_S = 10
 # recoverable error rather than silently injecting bad data to the context.
 # ---------------------------------------------------------------------------
 
-class _MarketDataOutput(BaseModel):
-    """Internal output schema for get_market_data.
+class _MarketDataOutput(MarketData):
+    """Relaxed output schema for get_market_data intermediate validation.
 
-    Mirrors the MarketData dossier schema but allows currency to be None
-    (some European tickers omit it) and does not enforce the as_of datetime
-    type (the value is an ISO string at this layer, Pydantic coerces it).
+    Inherits all fields from MarketData so new fields added there are
+    automatically validated here too (code-review finding #4, block-E PR).
+
+    Single relaxation: currency is optional because some European tickers omit
+    it. The extra 'ticker' key in the output dict is silently ignored by
+    Pydantic (extra='ignore' is the v2 default). Pydantic coerces the ISO
+    string value of 'as_of' to datetime automatically.
     """
 
-    ticker: str
-    price: float
-    currency: str | None
-    change_pct: float | None = None
-    market_cap: float | None = None
-    pe_ratio: float | None = None
-    forward_pe: float | None = None
-    eps: float | None = None
-    dividend_yield: float | None = None
-    week52_high: float | None = None
-    week52_low: float | None = None
-    as_of: str
-    source: str
+    currency: str | None = None  # MarketData requires str; European tickers may lack it
 
 
 @dataclass

@@ -7,7 +7,7 @@
 **Sesión:** block-E
 **Estado:** gate_pending
 **Fecha apertura:** 2026-05-31
-**Última actualización:** 2026-05-31 23:05
+**Última actualización:** 2026-05-31 23:20
 
 ## Objetivo de la sesión
 
@@ -51,7 +51,14 @@ Abrir la PR de `feat/guardrails` a `main` y esperar revisión humana (merge squa
 - **`agent_budget_usd` default 0.50 USD**: centro del rango ADR-007 (0.30–0.80). Sobreescribible por `AGENT_BUDGET_USD` en `.env`. Recalibrar con datos del eval set en block-H.
 - **Tenacity solo en errores de red**: `ConnectionError`, `OSError`, `socket.timeout`. `ValueError` (ticker sin precio) y errores 4xx de yfinance no se reintentan. `RetryError` → error recuperable devuelto al modelo.
 - **Rate limiting in-memory (slowapi)**: Upstash Redis documentado como upgrade de producción (Spec 04). Para el scope de block-E, el estado en memoria es suficiente.
-- **`_MarketDataOutput` Pydantic en `tools/client.py`**: schema interno (no exportado) distinto de `MarketData` del dossier: permite `currency: str | None` para tickers europeos y trata `as_of` como `str` ISO (Pydantic lo coerciona en el dossier final).
+- **`_MarketDataOutput` hereda de `MarketData`** (fix code-review #4): subclase con un solo override (`currency: str | None`). Pydantic coerciona el ISO string de `as_of` a `datetime` automáticamente; el campo `ticker` extra se ignora. Así los campos nuevos que se añadan a `MarketData` en el futuro se validan automáticamente aquí también.
+- **Budget check al inicio del turno** (fix code-review #1): movido al inicio del bucle (antes de la llamada API) para que siempre se despachen los tools del turno anterior, incluyendo `submit_dossier`. Un dossier completado en el turno que agota el presupuesto ya no se descarta.
+
+## Follow-ups de block-G (anotados en code-review PR #6, no tocar en block-E)
+
+- **#2** `serving/main.py:52` — `run()` sin try/except; `anthropic.AuthenticationError`, `RateLimitError`, `FileNotFoundError` devuelven `{"detail": "Internal Server Error"}` en lugar del contrato estructurado `{"error": ..., "terminated_by": ...}`. Mapear cada clase de excepción a código HTTP correcto (401/429/503/500).
+- **#3** `serving/main.py:26` — `_RATE_LIMIT` frozen al import; patches de settings en tests y cambios de env en runtime son ignorados. Considerar lambda o evaluación lazy.
+- **#5** `serving/main.py:46` — lazy import de `run` oculta errores de import hasta la primera petición. Mover al nivel de módulo para que falle en startup.
 - **Endpoint `/research` síncrono (sin SSE)**: el streaming SSE llega en block-F/G (Spec 06). Por ahora el endpoint bloquea hasta completar el loop.
 - **Timeout del modelo `agent_timeout_s`**: el valor del `.env` actual es 30 s (sobrescribe el default del código de 120 s). El cliente del agente y el clasificador Haiku (block-F) usarán clientes separados con timeouts diferentes.
 

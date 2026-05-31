@@ -728,6 +728,42 @@ def test_loop_budget_not_exceeded_continues():
     assert result.dossier is not None
 
 
+def test_loop_budget_exceeded_on_submit_dossier_turn_still_returns_dossier():
+    """submit_dossier on the budget-tipping turn must be dispatched and dossier returned.
+
+    Regression for code-review finding #1 (block-E PR): the budget check used to
+    fire BEFORE tool dispatch, so a valid submit_dossier call was silently discarded
+    when that turn's cost tipped total_cost over budget_usd. Fixed by moving the
+    budget check to the START of each turn (before the API call), so all tool calls
+    from the previous turn are always dispatched first.
+    """
+    from unittest.mock import patch as _patch
+    from app.config import settings
+
+    dossier_data = _valid_dossier_dict()
+    submit_block = _FakeToolUseBlock(id="sub1", name="submit_dossier", input=dossier_data)
+    responses = [
+        _FakeResponse(
+            stop_reason="tool_use",
+            content=[submit_block],
+            # Very high cost — this turn will tip total_cost well past any budget cap.
+            usage=_FakeUsage(input_tokens=10_000_000, output_tokens=10_000_000),
+        )
+    ]
+
+    with _patch_client(responses):
+        with _patch.object(settings, "agent_budget_usd", 0.001):
+            result = run("AAPL")
+
+    # The dossier must be returned even though the budget was exceeded this turn.
+    assert result.terminated_by == "submit_dossier", (
+        f"Expected 'submit_dossier' but got {result.terminated_by!r}. "
+        "The budget check must not discard a valid submit_dossier call."
+    )
+    assert result.dossier is not None
+    assert result.dossier.company.ticker == "AAPL"
+
+
 # ---------------------------------------------------------------------------
 # Block-E: model client timeout is wired (Spec 04)
 # ---------------------------------------------------------------------------

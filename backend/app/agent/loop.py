@@ -179,6 +179,20 @@ def run(
 
     with tracer.start(ticker) as run_trace:
         for turn in range(1, hard_limit + 1):
+            # Hard budget cut (ADR-007, Spec 04): placed BEFORE the API call so that
+            # the previous turn's tools (including submit_dossier) are always dispatched
+            # before the cap is enforced. A completed dossier is never discarded.
+            # On turn 1 total_cost=0 so this never fires before the first response.
+            if total_cost >= budget_usd:
+                logger.warning(
+                    "Budget cap $%.2f exceeded (spent $%.4f); stopping before turn %d",
+                    budget_usd,
+                    total_cost,
+                    turn,
+                )
+                terminated_by = "budget_exceeded"
+                break
+
             # Soft limit: inject a wrap-up message so the model finishes soon.
             if turn == soft_limit:
                 logger.info("Soft turn limit reached — injecting wrap-up message")
@@ -197,20 +211,6 @@ def run(
             turn_cost = _estimate_cost(response.usage)
             total_cost += turn_cost
             run_trace.record_turn(turn, response, turn_cost)
-
-            # Hard budget cut (ADR-007, Spec 04): stop immediately if spend exceeds
-            # the per-execution cap. Check after accumulating so the final turn is
-            # counted; do not check before the first response (turn=1) so we always
-            # complete at least one turn.
-            if total_cost >= budget_usd:
-                logger.warning(
-                    "Budget cap $%.2f exceeded (spent $%.4f) at turn %d; stopping loop",
-                    budget_usd,
-                    total_cost,
-                    turn,
-                )
-                terminated_by = "budget_exceeded"
-                break
 
             cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
             cache_created = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
