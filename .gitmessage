@@ -1,0 +1,28 @@
+# <type>(<scope>): <short summary in lower-case, no trailing dot>
+#
+# <body: what and why in English. Wrap at 72 chars.>
+#
+# <footer: breaking changes, refs to issues, co-authors>
+#
+# Types:
+#   feat:     new feature
+#   fix:      bug fix
+#   docs:     documentation only changes
+#   style:    formatting, missing semicolons, no code logic change
+#   refactor: code change that neither fixes a bug nor adds a feature
+#   perf:     performance improvement
+#   test:     adding or correcting tests
+#   build:    build system or external dependencies
+#   ci:       CI configuration
+#   chore:    other maintenance
+#   revert:   revert a previous commit
+#
+# Scopes (examples):
+#   tools, loop, guardrails, dossier, serving, evals, security,
+#   ci, docs, infra, session
+#
+# Examples:
+#   feat(tools): add get_market_data tool with yfinance provider
+#   feat(loop): add turn limit and budget cutoff to tool use loop
+#   docs(adr): record decision to use single agent with multiple tools
+#   chore(session): close block-D
