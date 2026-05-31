@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import ValidationError
@@ -82,7 +83,7 @@ def _get_market_data(input_data: dict) -> ToolResult:
                 "week52_high": getattr(info, "year_high", None),
                 "week52_low": getattr(info, "year_low", None),
                 "source": "yfinance",
-                "as_of": "now",
+                "as_of": datetime.now(tz=timezone.utc).isoformat(),
             }
         )
     except ImportError:
@@ -118,12 +119,23 @@ def _submit_dossier(input_data: dict) -> ToolResult:
             dossier=dossier,
         )
     except ValidationError as exc:
-        error_summary = exc.error_count()
-        logger.warning("Dossier validation failed: %d error(s)", error_summary)
+        logger.warning("Dossier validation failed: %d error(s)", exc.error_count())
         return ToolResult(
             json_response={
                 "success": False,
                 "error": str(exc),
                 "hint": "Fix the validation errors and call submit_dossier again.",
+            }
+        )
+    except Exception as exc:
+        # Catch-all: unexpected errors (TypeError from malformed input, etc.) must
+        # not propagate out of dispatch — the loop cannot recover from an unhandled
+        # exception in a thread (future.result() re-raises it, crashing run()).
+        logger.error("submit_dossier raised unexpected error: %s", exc, exc_info=True)
+        return ToolResult(
+            json_response={
+                "success": False,
+                "error": f"Unexpected error during dossier validation: {exc}",
+                "recoverable": False,
             }
         )

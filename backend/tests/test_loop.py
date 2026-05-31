@@ -32,7 +32,13 @@ from app.dossier.models import (
     RunMeta,
     Source,
 )
-from app.tools.client import ToolResult, dispatch_client_tool, is_terminal_tool
+from app.tools.client import (
+    ToolResult,
+    dispatch_client_tool,
+    is_terminal_tool,
+    _get_market_data,
+    _submit_dossier,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -399,3 +405,114 @@ def test_loop_server_tool_use_blocks_ignored():
 
     # Loop completes without error; server block was ignored.
     assert result.turns == 2
+
+
+# ---------------------------------------------------------------------------
+# Fix 1: _submit_dossier catch-all (review finding confirmed)
+# ---------------------------------------------------------------------------
+
+def test_submit_dossier_non_validation_error_is_caught():
+    """Non-ValidationError from model_validate is returned as error ToolResult, not raised."""
+    with patch(
+        "app.tools.client.CompanyDossier.model_validate",
+        side_effect=TypeError("unexpected internal error"),
+    ):
+        result = _submit_dossier({})
+
+    assert result.success is False
+    assert "error" in result.json_response
+    assert result.dossier is None
+    # Must NOT raise — the loop cannot recover from an unhandled thread exception.
+
+
+def test_dispatch_client_tool_submit_dossier_unexpected_error_does_not_raise():
+    """dispatch_client_tool wraps _submit_dossier; non-ValidationError must not propagate."""
+    with patch(
+        "app.tools.client.CompanyDossier.model_validate",
+        side_effect=RuntimeError("pydantic internals crashed"),
+    ):
+        result = dispatch_client_tool("submit_dossier", {})
+
+    assert result.success is False
+    assert result.dossier is None
+
+
+# ---------------------------------------------------------------------------
+# Fix 2: as_of is a real ISO datetime, not the literal string "now"
+# ---------------------------------------------------------------------------
+
+def test_get_market_data_as_of_is_iso_datetime():
+    """get_market_data returns as_of as a valid ISO 8601 datetime, not 'now'."""
+    mock_info = MagicMock()
+    mock_info.last_price = 100.0
+    mock_info.currency = "USD"
+    mock_info.market_cap = 1_000_000_000.0
+    mock_info.year_high = 110.0
+    mock_info.year_low = 90.0
+
+    with patch("yfinance.Ticker") as mock_ticker_cls:
+        mock_ticker_cls.return_value.fast_info = mock_info
+        result = _get_market_data({"ticker": "AAPL"})
+
+    assert "as_of" in result.json_response
+    as_of = result.json_response["as_of"]
+    assert as_of != "now", "'now' literal must not appear; expected ISO 8601 string"
+    # Must be parseable as a datetime.
+    parsed = datetime.fromisoformat(as_of)
+    assert parsed.tzinfo is not None, "as_of must be timezone-aware"
+
+
+# ---------------------------------------------------------------------------
+# Fix 3: server-tool-only turn must not append empty user content (review finding)
+# ---------------------------------------------------------------------------
+
+def test_loop_server_only_turn_no_empty_user_message():
+    """When a turn has only server_tool_use blocks, no user message with content:[] is sent."""
+    srv = _FakeServerToolUseBlock()
+    responses = [
+        # Turn 1: only a server tool fires; stop_reason is still "tool_use"
+        _FakeResponse(stop_reason="tool_use", content=[srv]),
+        _FakeResponse(stop_reason="end_turn"),
+    ]
+
+    captured_calls: list[list] = []
+
+    def _recording_create(**kwargs):
+        captured_calls.append(list(kwargs["messages"]))
+        return responses[len(captured_calls) - 1]
+
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = _recording_create
+
+    with patch("app.agent.loop.anthropic.Anthropic", return_value=mock_client):
+        result = run("AAPL")
+
+    assert result.terminated_by == "end_turn"
+    assert result.turns == 2
+
+    # The second API call must NOT include a user message with an empty content list.
+    second_call_messages = captured_calls[1]
+    empty_user_msgs = [
+        m for m in second_call_messages
+        if m["role"] == "user" and m["content"] == []
+    ]
+    assert empty_user_msgs == [], (
+        "Empty user content list must not be sent to the Anthropic API; "
+        f"found: {empty_user_msgs}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Fix 4: max_turns parameter controls the loop at call time (not baked constant)
+# ---------------------------------------------------------------------------
+
+def test_run_max_turns_parameter_overrides_baked_limit():
+    """max_turns=2 stops the loop at 2 turns regardless of settings.agent_max_turns."""
+    tool_use_block = _FakeToolUseBlock(id="t1", name="get_market_data", input={"ticker": "AAPL"})
+    responses = [_FakeResponse(stop_reason="tool_use", content=[tool_use_block])] * 10
+
+    with _patch_client(responses):
+        result = run("AAPL", max_turns=2)
+
+    assert result.turns == 2
+    assert result.terminated_by == "hard_limit"

@@ -159,3 +159,13 @@ def get_tracer() -> Tracer:
     if _tracer is None:
         _tracer = Tracer()
     return _tracer
+
+
+def reset_tracer() -> None:
+    """Clear the singleton so the next get_tracer() call re-initialises it.
+
+    Intended for test teardown only: prevents a live Langfuse HTTP client
+    created in one test from leaking into subsequent tests in the same process.
+    """
+    global _tracer
+    _tracer = None

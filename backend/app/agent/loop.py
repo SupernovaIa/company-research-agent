@@ -29,11 +29,12 @@ from app.tools.inventory import AGENT_MODEL, TOOLS
 
 logger = logging.getLogger(__name__)
 
-# Provisional turn limits (ADR-007). Derived from settings so they can be
-# overridden via AGENT_MAX_TURNS in the .env. Recalibrate against the eval
-# set in block-E/H.
-HARD_TURN_LIMIT: int = settings.agent_max_turns
-SOFT_TURN_LIMIT: int = max(1, HARD_TURN_LIMIT - 5)
+# Provisional turn limits (ADR-007). Read at call time from settings so that
+# tests can patch settings.agent_max_turns without reloading the module, and
+# so that AGENT_MAX_TURNS changes in .env take effect without a restart.
+# Kept as module-level aliases for backward-compat imports in test_loop.py.
+HARD_TURN_LIMIT: int = settings.agent_max_turns   # used by tests for assertions
+SOFT_TURN_LIMIT: int = max(1, HARD_TURN_LIMIT - 5)  # used by tests for assertions
 
 # Sonnet 4.6 rate card (USD per million tokens). Verify against the current card.
 _COST_PER_MTOK_IN = 3.00
@@ -117,6 +118,7 @@ def _execute_tools_parallel(tool_uses: list) -> dict[str, ToolResult]:
 def run(
     ticker: str,
     *,
+    max_turns: int | None = None,
     on_turn: Callable[[int, str, list], None] | None = None,
 ) -> LoopResult:
     """Run the research loop for *ticker* and return a LoopResult.
@@ -125,11 +127,19 @@ def run(
     ----------
     ticker:
         Exchange ticker symbol to research (e.g. "AAPL", "SAP.DE").
+    max_turns:
+        Override the hard turn limit. Defaults to ``settings.agent_max_turns``
+        (read at call time, not at import time). Tests pass a small value here
+        so they don't depend on the baked module-level constant.
     on_turn:
         Optional callback invoked after every turn with
         ``(turn_number, stop_reason, content_blocks)``. The serving layer
         uses this for SSE streaming; the CLI ignores it.
     """
+    # Read limits at call time so runtime patches to settings are honoured.
+    hard_limit = max_turns if max_turns is not None else settings.agent_max_turns
+    soft_limit = max(1, hard_limit - 5)
+
     # api_key from settings (loaded from the repo-root .env via pydantic-settings).
     # Falls back to the ANTHROPIC_API_KEY env var if settings.anthropic_api_key is empty,
     # which is the default SDK behaviour when api_key=None.
@@ -161,13 +171,13 @@ def run(
     turn = 0
 
     with tracer.start(ticker) as run_trace:
-        for turn in range(1, HARD_TURN_LIMIT + 1):
+        for turn in range(1, hard_limit + 1):
             # Soft limit: inject a wrap-up message so the model finishes soon.
-            if turn == SOFT_TURN_LIMIT:
+            if turn == soft_limit:
                 logger.info("Soft turn limit reached — injecting wrap-up message")
                 messages.append({"role": "user", "content": _WRAP_UP_MESSAGE})
 
-            logger.info("Turn %d / %d", turn, HARD_TURN_LIMIT)
+            logger.info("Turn %d / %d", turn, hard_limit)
 
             response = client.messages.create(
                 model=AGENT_MODEL,
@@ -206,19 +216,23 @@ def run(
                 tool_uses = _extract_client_tool_uses(response.content)
                 results = _execute_tools_parallel(tool_uses)
 
-                # Build tool_result content for the next message.
-                tool_result_content = [
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": tu.id,
-                        "content": json.dumps(results[tu.id].json_response),
-                    }
-                    for tu in tool_uses
-                ]
-
-                # Append assistant turn (all blocks, including server_tool_use).
+                # Append the full assistant turn (includes server_tool_use blocks).
                 messages.append({"role": "assistant", "content": response.content})
-                messages.append({"role": "user", "content": tool_result_content})
+
+                # Only send tool_result when there are client tool calls.
+                # If stop_reason=="tool_use" with zero client tool_use blocks (all
+                # server-side), skipping the user message avoids an empty content:[]
+                # which the Anthropic API rejects with a 400.
+                if tool_uses:
+                    tool_result_content = [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": tu.id,
+                            "content": json.dumps(results[tu.id].json_response),
+                        }
+                        for tu in tool_uses
+                    ]
+                    messages.append({"role": "user", "content": tool_result_content})
 
                 # Detect successful dossier submission.
                 for tu in tool_uses:
@@ -241,9 +255,9 @@ def run(
                 messages.append({"role": "assistant", "content": response.content})
 
         else:
-            # for-else: loop exhausted HARD_TURN_LIMIT without a break.
+            # for-else: loop exhausted hard_limit without a break.
             logger.warning(
-                "Hard turn limit %d reached without termination", HARD_TURN_LIMIT
+                "Hard turn limit %d reached without termination", hard_limit
             )
             terminated_by = "hard_limit"
 
