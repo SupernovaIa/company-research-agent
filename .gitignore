@@ -5,14 +5,27 @@
 
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
 .venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/
+build/
 
 # Node
 node_modules/
 
 # Config aislado de Claude Code
 .cc-config/
+
+# Editores
+.idea/
+.vscode/
 
 # Ruido del SO
 .DS_Store
