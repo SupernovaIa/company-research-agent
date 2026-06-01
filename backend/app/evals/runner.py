@@ -75,12 +75,20 @@ def load_gold_set(path: Path | None = None) -> list[dict]:
     return entries
 
 
-def _load_fixture(ticker: str) -> dict | None:
-    """Return the pre-recorded get_market_data payload for *ticker*, or None."""
+def _load_fixture(ticker: str) -> dict:
+    """Return the pre-recorded get_market_data payload for *ticker*.
+
+    Raises FileNotFoundError if the fixture is absent.  Every gold-set ticker
+    must have a fixture so the gate is fully deterministic (Spec 07): falling
+    through to live yfinance in CI would make the gate non-reproducible.
+    """
     path = FIXTURES_DIR / f"{ticker}.json"
-    if path.exists():
-        return json.loads(path.read_text(encoding="utf-8"))
-    return None
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Missing fixture for ticker '{ticker}': {path}\n"
+            "Create evals/fixtures/{ticker}.json before adding a gold entry."
+        )
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _tool_names_from_content(content: list) -> list[str]:
@@ -110,6 +118,18 @@ def run_eval(
     (web_search, web_fetch, code_execution) run live.
     """
     entries = load_gold_set(gold_path)
+
+    # Pre-flight: verify all fixtures exist before spending any API tokens.
+    # Missing fixtures would cause a silent fallthrough to live yfinance,
+    # breaking the CI gate determinism guarantee (Spec 07, review finding #3).
+    missing = [e["ticker"] for e in entries if not (FIXTURES_DIR / f"{e['ticker']}.json").exists()]
+    if missing:
+        raise FileNotFoundError(
+            f"Missing fixtures for tickers: {missing}\n"
+            "Create evals/fixtures/<TICKER>.json for each gold entry "
+            "before running the eval gate."
+        )
+
     cost_cap = settings.agent_budget_usd
     results: list[EntryResult] = []
 
@@ -126,7 +146,7 @@ def run_eval(
         fixture = _load_fixture(ticker)
 
         def _patched_dispatch(name, input_data, _fix=fixture):
-            if name == "get_market_data" and _fix is not None:
+            if name == "get_market_data":
                 return ToolResult(json_response=_fix)
             return _orig_dispatch(name, input_data)
 

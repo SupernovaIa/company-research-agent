@@ -196,7 +196,7 @@ def test_run_eval_all_pass(tmp_path):
         return _loop_result("end_turn", dossier=None, cost=0.01)
 
     with patch("app.evals.runner.loop_run", side_effect=fake_loop):
-        with patch("app.evals.runner._load_fixture", return_value=None):
+        with patch("app.evals.runner._load_fixture", return_value={"price": 100.0, "currency": "USD", "source": "Yahoo Finance", "as_of": "2026-06-01T00:00:00+00:00"}):
             report = run_eval(gold_path=gold, max_turns=5)
 
     assert report.total_entries == 2
@@ -220,7 +220,7 @@ def test_run_eval_gate_fail_completion(tmp_path):
         return _loop_result("hard_limit", dossier=None, cost=0.05)
 
     with patch("app.evals.runner.loop_run", side_effect=fake_loop):
-        with patch("app.evals.runner._load_fixture", return_value=None):
+        with patch("app.evals.runner._load_fixture", return_value={"price": 100.0, "currency": "USD", "source": "Yahoo Finance", "as_of": "2026-06-01T00:00:00+00:00"}):
             report = run_eval(gold_path=gold, max_turns=5)
 
     assert report.task_completion_rate == pytest.approx(0.2)
@@ -239,7 +239,7 @@ def test_run_eval_gate_fail_tool_accuracy(tmp_path):
         return _loop_result("submit_dossier", cost=0.03)
 
     with patch("app.evals.runner.loop_run", side_effect=fake_loop):
-        with patch("app.evals.runner._load_fixture", return_value=None):
+        with patch("app.evals.runner._load_fixture", return_value={"price": 100.0, "currency": "USD", "source": "Yahoo Finance", "as_of": "2026-06-01T00:00:00+00:00"}):
             report = run_eval(gold_path=gold, max_turns=5)
 
     assert report.tool_use_accuracy == 0.0
@@ -258,7 +258,7 @@ def test_run_eval_gate_fail_cost(tmp_path, monkeypatch):
         return _loop_result("submit_dossier", cost=999.0)
 
     with patch("app.evals.runner.loop_run", side_effect=fake_loop):
-        with patch("app.evals.runner._load_fixture", return_value=None):
+        with patch("app.evals.runner._load_fixture", return_value={"price": 100.0, "currency": "USD", "source": "Yahoo Finance", "as_of": "2026-06-01T00:00:00+00:00"}):
             report = run_eval(gold_path=gold, max_turns=5)
 
     assert report.gate_pass is False
@@ -275,7 +275,7 @@ def test_error_entry_complete_when_no_dossier(tmp_path):
         return _loop_result("end_turn", dossier=None, cost=0.01)
 
     with patch("app.evals.runner.loop_run", side_effect=fake_loop):
-        with patch("app.evals.runner._load_fixture", return_value=None):
+        with patch("app.evals.runner._load_fixture", return_value={"price": 100.0, "currency": "USD", "source": "Yahoo Finance", "as_of": "2026-06-01T00:00:00+00:00"}):
             report = run_eval(gold_path=gold, max_turns=5)
 
     assert report.results[0].task_completion is True
@@ -295,7 +295,7 @@ def test_error_entry_fails_when_dossier_emitted(tmp_path):
         return _loop_result("submit_dossier", dossier=_make_dossier(), cost=0.05)
 
     with patch("app.evals.runner.loop_run", side_effect=fake_loop):
-        with patch("app.evals.runner._load_fixture", return_value=None):
+        with patch("app.evals.runner._load_fixture", return_value={"price": 100.0, "currency": "USD", "source": "Yahoo Finance", "as_of": "2026-06-01T00:00:00+00:00"}):
             report = run_eval(gold_path=gold, max_turns=5)
 
     assert report.results[0].task_completion is False
@@ -307,7 +307,7 @@ def test_run_eval_empty_gold(tmp_path):
     gold.write_text("", encoding="utf-8")
 
     with patch("app.evals.runner.loop_run"):
-        with patch("app.evals.runner._load_fixture", return_value=None):
+        with patch("app.evals.runner._load_fixture", return_value={"price": 100.0, "currency": "USD", "source": "Yahoo Finance", "as_of": "2026-06-01T00:00:00+00:00"}):
             report = run_eval(gold_path=gold)
 
     assert report.total_entries == 0
@@ -324,7 +324,7 @@ def test_run_eval_entry_result_fields(tmp_path):
         return _loop_result("submit_dossier", cost=0.07, turns=4)
 
     with patch("app.evals.runner.loop_run", side_effect=fake_loop):
-        with patch("app.evals.runner._load_fixture", return_value=None):
+        with patch("app.evals.runner._load_fixture", return_value={"price": 100.0, "currency": "USD", "source": "Yahoo Finance", "as_of": "2026-06-01T00:00:00+00:00"}):
             report = run_eval(gold_path=gold, max_turns=5)
 
     r = report.results[0]
@@ -353,3 +353,32 @@ def test_gold_jsonl_resolves_to_repo_root():
     )
     # Sanity: the resolved path must contain the project directory name.
     assert "company-research-agent" in str(GOLD_JSONL)
+
+
+# ---------------------------------------------------------------------------
+# Tests: missing fixture → loud error (review finding #3)
+# ---------------------------------------------------------------------------
+
+def test_missing_fixture_raises(tmp_path, monkeypatch):
+    """run_eval raises FileNotFoundError when a gold entry has no fixture file."""
+    gold = _gold_file(tmp_path, [AAPL_ENTRY])
+    # Point FIXTURES_DIR to an empty directory so AAPL has no fixture.
+    empty = tmp_path / "fixtures"
+    empty.mkdir()
+    monkeypatch.setattr("app.evals.runner.FIXTURES_DIR", empty)
+
+    with pytest.raises(FileNotFoundError, match="Missing fixtures for tickers"):
+        run_eval(gold_path=gold)
+
+
+def test_fixture_error_fires_before_api_calls(tmp_path, monkeypatch):
+    """The fixture check must fail before any loop_run call is made."""
+    gold = _gold_file(tmp_path, [AAPL_ENTRY])
+    empty = tmp_path / "fixtures"
+    empty.mkdir()
+    monkeypatch.setattr("app.evals.runner.FIXTURES_DIR", empty)
+
+    with patch("app.evals.runner.loop_run") as mock_loop:
+        with pytest.raises(FileNotFoundError):
+            run_eval(gold_path=gold)
+    mock_loop.assert_not_called()
