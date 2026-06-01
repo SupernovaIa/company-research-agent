@@ -382,3 +382,61 @@ def test_fixture_error_fires_before_api_calls(tmp_path, monkeypatch):
         with pytest.raises(FileNotFoundError):
             run_eval(gold_path=gold)
     mock_loop.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Tests: per-entry exception isolation (CI timeout diagnosis)
+# ---------------------------------------------------------------------------
+
+def test_exception_in_one_entry_does_not_abort_gate(tmp_path):
+    """An exception in loop_run for one entry must not abort the whole run."""
+    gold = _gold_file(tmp_path, [AAPL_ENTRY, ERROR_ENTRY])
+    call_n = [0]
+
+    def fake_loop(ticker, *, max_turns=None, on_turn=None):
+        call_n[0] += 1
+        if ticker == "AAPL":
+            raise RuntimeError("simulated APITimeoutError")
+        # INVALID_XYZ runs normally
+        if on_turn:
+            on_turn(1, "tool_use", [_Block("tool_use", "get_market_data")])
+        return _loop_result("end_turn", dossier=None, cost=0.01)
+
+    with patch("app.evals.runner.loop_run", side_effect=fake_loop):
+        with patch("app.evals.runner._load_fixture",
+                   return_value={"price": 100.0, "currency": "USD",
+                                 "source": "Yahoo Finance",
+                                 "as_of": "2026-06-01T00:00:00+00:00"}):
+            report = run_eval(gold_path=gold, max_turns=5)
+
+    # Both entries were processed despite the first one crashing.
+    assert report.total_entries == 2
+    assert call_n[0] == 2
+
+    aapl = report.results[0]
+    assert aapl.terminated_by == "runner_error"
+    assert aapl.task_completion is False
+    assert aapl.actual_tool_calls == []
+    assert aapl.cost_usd == 0.0
+
+    # The second entry ran normally and passed.
+    invalid = report.results[1]
+    assert invalid.terminated_by == "end_turn"
+    assert invalid.task_completion is True   # error entry: dossier=None → pass
+
+
+def test_all_entries_error_gate_fails(tmp_path):
+    """If every entry raises, gate reports 0% completion and fails."""
+    gold = _gold_file(tmp_path, [AAPL_ENTRY, AAPL_ENTRY])
+
+    with patch("app.evals.runner.loop_run",
+               side_effect=RuntimeError("timeout")):
+        with patch("app.evals.runner._load_fixture",
+                   return_value={"price": 100.0, "currency": "USD",
+                                 "source": "Yahoo Finance",
+                                 "as_of": "2026-06-01T00:00:00+00:00"}):
+            report = run_eval(gold_path=gold, max_turns=5)
+
+    assert report.total_entries == 2
+    assert report.task_completion_rate == 0.0
+    assert report.gate_pass is False

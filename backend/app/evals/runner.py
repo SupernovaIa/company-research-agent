@@ -158,7 +158,29 @@ def run_eval(
             return _orig_dispatch(name, input_data)
 
         with patch("app.agent.loop.dispatch_client_tool", side_effect=_patched_dispatch):
-            loop_result = loop_run(ticker, max_turns=max_turns, on_turn=on_turn)
+            try:
+                loop_result = loop_run(ticker, max_turns=max_turns, on_turn=on_turn)
+            except Exception as exc:
+                # An APITimeoutError, connection error, or any unexpected exception
+                # in a single entry must not abort the whole gate run.  Count the
+                # entry as failed and continue with the remaining tickers.
+                logger.error(
+                    "[%s] loop_run raised %s: %s — counting as failed entry",
+                    ticker, type(exc).__name__, exc,
+                )
+                results.append(EntryResult(
+                    ticker=ticker,
+                    category=entry["category"],
+                    task_completion_expected=task_completion_expected,
+                    terminated_by="runner_error",
+                    task_completion=False,
+                    tool_use_accurate=False,
+                    actual_tool_calls=[],
+                    expected_tool_calls=sorted(expected_calls),
+                    cost_usd=0.0,
+                    turns=0,
+                ))
+                continue
 
         actual_set = set(actual_calls)
 
