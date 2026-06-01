@@ -60,6 +60,13 @@ class EvalReport:
     total_entries: int
     gate_pass: bool
     failures: list[str]
+    # Per-metric pass booleans — single source of truth for the CI JS badge.
+    # Avoids hardcoding Python threshold constants in the workflow script.
+    task_completion_pass: bool = True
+    tool_accuracy_pass: bool = True
+    cost_pass: bool = True
+    # Threshold values at eval time — read by CI JS for the threshold column.
+    thresholds: dict = field(default_factory=dict)
     results: list[EntryResult] = field(default_factory=list)
 
 
@@ -186,18 +193,22 @@ def run_eval(
     tool_use_accuracy = sum(r.tool_use_accurate for r in results) / n if n else 0.0
     mean_cost = sum(r.cost_usd for r in results) / n if n else 0.0
 
+    task_completion_pass = task_completion_rate >= TASK_COMPLETION_THRESHOLD
+    tool_accuracy_pass = tool_use_accuracy >= TOOL_ACCURACY_THRESHOLD
+    cost_pass = mean_cost <= cost_cap
+
     failures: list[str] = []
-    if task_completion_rate < TASK_COMPLETION_THRESHOLD:
+    if not task_completion_pass:
         failures.append(
             f"task_completion_rate {task_completion_rate:.2%} < "
             f"{TASK_COMPLETION_THRESHOLD:.0%}"
         )
-    if tool_use_accuracy < TOOL_ACCURACY_THRESHOLD:
+    if not tool_accuracy_pass:
         failures.append(
             f"tool_use_accuracy {tool_use_accuracy:.2%} < {TOOL_ACCURACY_THRESHOLD:.0%}"
         )
-    if mean_cost > cost_cap:
-        failures.append(f"mean_cost ${mean_cost:.4f} > budget ${cost_cap:.2f}")
+    if not cost_pass:
+        failures.append(f"mean_cost ${mean_cost:.4f} >= budget ${cost_cap:.2f}")
 
     return EvalReport(
         task_completion_rate=task_completion_rate,
@@ -206,6 +217,14 @@ def run_eval(
         total_entries=n,
         gate_pass=not failures,
         failures=failures,
+        task_completion_pass=task_completion_pass,
+        tool_accuracy_pass=tool_accuracy_pass,
+        cost_pass=cost_pass,
+        thresholds={
+            "task_completion": TASK_COMPLETION_THRESHOLD,
+            "tool_accuracy": TOOL_ACCURACY_THRESHOLD,
+            "cost_budget": cost_cap,
+        },
         results=results,
     )
 

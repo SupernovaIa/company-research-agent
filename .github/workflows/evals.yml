@@ -50,20 +50,20 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const path = require('path');
 
             let body;
             try {
               const raw = fs.readFileSync('backend/eval-report.json', 'utf8');
               const r = JSON.parse(raw);
+              const t = r.thresholds;
               const badge = r.gate_pass ? '✅ PASS' : '❌ FAIL';
 
               body = `## Eval Gate: ${badge}\n\n`;
               body += `| Metric | Value | Threshold | Status |\n`;
               body += `|--------|-------|-----------|--------|\n`;
-              body += `| task_completion_rate | ${(r.task_completion_rate * 100).toFixed(1)}% | ≥85% | ${r.task_completion_rate >= 0.85 ? '✅' : '❌'} |\n`;
-              body += `| tool_use_accuracy | ${(r.tool_use_accuracy * 100).toFixed(1)}% | ≥80% | ${r.tool_use_accuracy >= 0.80 ? '✅' : '❌'} |\n`;
-              body += `| mean_cost_usd | $${r.mean_cost_usd.toFixed(4)} | ≤budget | ${r.gate_pass || !r.failures.some(f => f.includes('mean_cost')) ? '✅' : '❌'} |\n`;
+              body += `| task_completion_rate | ${(r.task_completion_rate * 100).toFixed(1)}% | ≥${(t.task_completion * 100).toFixed(0)}% | ${r.task_completion_pass ? '✅' : '❌'} |\n`;
+              body += `| tool_use_accuracy | ${(r.tool_use_accuracy * 100).toFixed(1)}% | ≥${(t.tool_accuracy * 100).toFixed(0)}% | ${r.tool_accuracy_pass ? '✅' : '❌'} |\n`;
+              body += `| mean_cost_usd | $${r.mean_cost_usd.toFixed(4)} | ≤$${t.cost_budget.toFixed(2)} | ${r.cost_pass ? '✅' : '❌'} |\n`;
 
               if (r.failures.length > 0) {
                 body += `\n**Failed gates:**\n${r.failures.map(f => `- ${f}`).join('\n')}\n`;
