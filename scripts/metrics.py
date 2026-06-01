@@ -22,6 +22,7 @@ import base64
 import json
 import os
 import sys
+import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -107,13 +108,11 @@ def _parse_ts(ts: str | None) -> datetime | None:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    import urllib.parse  # noqa: PLC0415  needed inside function for _lf_get
-
     parser = argparse.ArgumentParser(
         description="Print agent metrics from Langfuse traces."
     )
     parser.add_argument("--days", type=int, default=30, help="Lookback window (default: 30)")
-    parser.add_argument("--limit", type=int, default=200, help="Max traces to fetch (default: 200)")
+    parser.add_argument("--limit", type=int, default=100, help="Max traces to fetch (default: 100, Langfuse max per page: 100)")
     args = parser.parse_args()
 
     env = _load_dotenv(_ENV_FILE)
@@ -136,12 +135,14 @@ def main() -> None:
         )
         sys.exit(1)
 
+    # Langfuse expects ISO 8601 with milliseconds: "2024-01-15T12:00:00.000Z"
     from_ts = (
         datetime.now(tz=timezone.utc) - timedelta(days=args.days)
-    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
     print(f"Querying Langfuse ({base_url}) — last {args.days} days, up to {args.limit} traces…")
 
+    limit = min(args.limit, 100)  # Langfuse API caps at 100 per page
     data = _lf_get(
         base_url,
         public_key,
@@ -150,7 +151,7 @@ def main() -> None:
         {
             "name": "research",
             "fromTimestamp": from_ts,
-            "limit": args.limit,
+            "limit": limit,
             "page": 1,
         },
     )
@@ -290,5 +291,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    import urllib.parse  # imported here so the function-level import works too
     main()
