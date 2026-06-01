@@ -68,16 +68,16 @@ def _load_system_prompt() -> str:
     return _SYSTEM_PROMPT_PATH.read_text(encoding="utf-8").strip()
 
 
-def _build_tools_with_cache() -> list[dict]:
-    """Return the TOOLS list with a cache breakpoint on the last entry.
+def _build_tools_with_cache(tools: list[dict] | None = None) -> list[dict]:
+    """Return *tools* (or the default TOOLS) with a cache breakpoint on the last entry.
 
     Keeping all tools stable between turns lets Anthropic serve the tool
     definitions from cache on every turn after the first.
     """
-    tools = list(TOOLS)
-    last = dict(tools[-1])
+    tool_list = list(tools if tools is not None else TOOLS)
+    last = dict(tool_list[-1])
     last["cache_control"] = {"type": "ephemeral"}
-    return tools[:-1] + [last]
+    return tool_list[:-1] + [last]
 
 
 def _estimate_cost(usage: anthropic.types.Usage) -> float:
@@ -123,6 +123,8 @@ def run(
     *,
     max_turns: int | None = None,
     on_turn: Callable[[int, str, list], None] | None = None,
+    tools: list[dict] | None = None,
+    temperature: float | None = None,
 ) -> LoopResult:
     """Run the research loop for *ticker* and return a LoopResult.
 
@@ -138,6 +140,13 @@ def run(
         Optional callback invoked after every turn with
         ``(turn_number, stop_reason, content_blocks)``. The serving layer
         uses this for SSE streaming; the CLI ignores it.
+    tools:
+        Override the tool inventory. When ``None`` (default) the production
+        TOOLS list is used. The eval runner passes EVAL_TOOLS to replace
+        server tools with deterministic client-tool equivalents (Spec 07).
+    temperature:
+        Model sampling temperature. ``None`` leaves the API default (1.0).
+        The eval runner passes 0.0 to reduce between-run variance.
     """
     # Read limits at call time so runtime patches to settings are honoured.
     hard_limit = max_turns if max_turns is not None else settings.agent_max_turns
@@ -163,7 +172,7 @@ def run(
             "cache_control": {"type": "ephemeral"},
         }
     ]
-    tools = _build_tools_with_cache()
+    _tools = _build_tools_with_cache(tools)
 
     messages: list[dict] = [
         {
@@ -205,13 +214,16 @@ def run(
 
             logger.info("Turn %d / %d", turn, hard_limit)
 
-            response = client.messages.create(
+            create_kwargs: dict = dict(
                 model=AGENT_MODEL,
                 max_tokens=8192,
                 system=system_with_cache,
-                tools=tools,
+                tools=_tools,
                 messages=messages,
             )
+            if temperature is not None:
+                create_kwargs["temperature"] = temperature
+            response = client.messages.create(**create_kwargs)
 
             turn_cost = _estimate_cost(response.usage)
             total_cost += turn_cost
