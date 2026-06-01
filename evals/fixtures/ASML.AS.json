@@ -1,0 +1,15 @@
+{
+  "ticker": "ASML.AS",
+  "price": 842.30,
+  "currency": "EUR",
+  "change_pct": -0.45,
+  "market_cap": 331500000000.0,
+  "pe_ratio": 34.8,
+  "forward_pe": 29.5,
+  "eps": 24.20,
+  "dividend_yield": 0.0098,
+  "week52_high": 1001.50,
+  "week52_low": 692.70,
+  "as_of": "2026-06-01T00:00:00+00:00",
+  "source": "Yahoo Finance"
+}

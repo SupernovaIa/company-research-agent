@@ -1,0 +1,4 @@
+{
+  "error": "no price data returned for 'INVALID_XYZ'",
+  "recoverable": true
+}

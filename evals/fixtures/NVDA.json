@@ -1,0 +1,15 @@
+{
+  "ticker": "NVDA",
+  "price": 136.95,
+  "currency": "USD",
+  "change_pct": -1.15,
+  "market_cap": 3360000000000.0,
+  "pe_ratio": 49.8,
+  "forward_pe": 37.5,
+  "eps": 2.75,
+  "dividend_yield": null,
+  "week52_high": 153.13,
+  "week52_low": 86.07,
+  "as_of": "2026-06-01T00:00:00+00:00",
+  "source": "Yahoo Finance"
+}

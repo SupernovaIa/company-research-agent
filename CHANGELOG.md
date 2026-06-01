@@ -10,6 +10,35 @@ Próximas entradas por sesión.
 
 ---
 
+## [block-H] - 2026-06-01
+
+### Añadido
+
+- **`evals/gold.jsonl`** (13 entradas firmadas): set de comportamiento del agente. Cobertura deliberada: 6 cotizadas USA large-cap (AAPL, MSFT, NVDA, TSLA, AMZN, BRK-B), 1 USA mid-cap (SHOP), 1 europea con datos completos (ASML.AS), 2 europeas con datos parciales (SAP.DE, MC.PA), 1 ticker japonés con datos parciales (7203.T, JPY), 2 tickers inexistentes (INVALID_XYZ, FAKECORP999). Cada entrada: `expected_tool_calls`, `optional_tool_calls`, `task_completion_expected`, `dossier_checks` (currency, nullable_market_data_fields, mínimos de facts/news/sources), `category`, `annotation_notes`. Anotado con dos invocaciones paralelas del subagente `gold-annotator`; firmado humano antes de integrar.
+- **`evals/fixtures/`** (13 ficheros JSON): respuestas pre-grabadas de `get_market_data` para cada ticker — valores plausibles y estáticos a fecha 2026-06-01. Los tickers inexistentes llevan fixture de error `{"error": ..., "recoverable": true}`. Objetivo: que un fallo de yfinance no tumbe el gate de CI.
+- **`backend/app/evals/runner.py`**: runner de evals. `load_gold_set`, `_load_fixture`, `_tool_names_from_content` (extrae nombres de bloques `tool_use` y `server_tool_use`), `run_eval` (parchea `dispatch_client_tool` con fixtures vía `unittest.mock.patch`; llama al modelo en vivo; calcula task_completion, tool_use_accuracy y mean_cost). `print_report` (tabla CLI), `build_markdown_summary` (Markdown para GitHub job summary y comentario de PR). CLI: `--ci` (exit 1 si gate falla), `--json` (escribe `eval-report.json`), `--max-turns`. Umbrales: task_completion ≥ 85 %, tool_use_accuracy ≥ 80 %, mean_cost ≤ `agent_budget_usd`.
+- **`backend/tests/evals/test_eval_runner.py`** (15 tests): `load_gold_set`, `_tool_names_from_content`, gate pass/fail por completion rate, tool accuracy y coste, semántica de entries de error (`task_completion_expected=false`), campos de `EntryResult`.
+- **`.github/workflows/evals.yml`**: workflow `eval-gate` que corre en cada PR a `main`. Steps: checkout, Python 3.12, uv, `uv sync`, `uv run python -m app.evals.runner --ci --json`, comentario automático en el PR con tabla de métricas y resultados por entrada (crea o actualiza el comentario del bot). Permisos mínimos: `pull-requests: write`.
+
+### Cambiado
+
+- **`specs/07-evals-ci-gate.md`**: estado `pre-construida` → `aceptada (implementada en block-H, 2026-06-01)`.
+- **`specs/08-gold-dataset.md`**: estado `pre-construida` → `aceptada (implementada en block-H, 2026-06-01)`.
+
+### Decisiones documentadas
+
+- Fixtures solo para `get_market_data` (client tool): los server tools (web_search, web_fetch) no se pueden mockear en el cliente y se dejan correr en vivo. yfinance es la principal fuente de fallo del gate; el fixture la aísla.
+- `on_turn` como único punto de tracking de tool calls: el callback recibe el content completo con bloques `tool_use` (client) y `server_tool_use` (server-side), suficiente para medir tool_use_accuracy sin instrumentación adicional.
+- `task_completion` para entries de error: `task_completion_expected=false` pasa si `loop_result.dossier is None` — mide exactamente que el agente no fabricó un dossier para un ticker inexistente.
+
+### Notas
+
+- Suite completa: **97 passed** (82 existentes + 15 nuevos de eval runner).
+- Coste: ~$0 USD; los tests del runner mockean el loop. No se hicieron corridas reales del agente en esta sesión.
+- El workflow `eval-gate` requiere el secret `ANTHROPIC_API_KEY` en el repo de GitHub para ejecutarse.
+
+---
+
 ## [block-G] - 2026-06-01
 
 ### Añadido

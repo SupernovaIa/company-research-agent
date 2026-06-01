@@ -1,0 +1,15 @@
+{
+  "ticker": "7203.T",
+  "price": 3247.0,
+  "currency": "JPY",
+  "change_pct": null,
+  "market_cap": 47340000000000.0,
+  "pe_ratio": 9.8,
+  "forward_pe": null,
+  "eps": null,
+  "dividend_yield": null,
+  "week52_high": 4100.0,
+  "week52_low": 2680.0,
+  "as_of": "2026-06-01T00:00:00+00:00",
+  "source": "Yahoo Finance"
+}

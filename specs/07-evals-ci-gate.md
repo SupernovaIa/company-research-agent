@@ -1,6 +1,6 @@
 # Spec 07 · Evals en CI como gate de PR
 
-**Estado:** pre-construida (se implementa en Fase 5, block-H)
+**Estado:** aceptada (implementada en block-H, 2026-06-01)
 **Fase:** 5 · Evals + CI (block-H)
 **Dependencias:** Spec 08 (set de evaluación), Spec 06 (métricas)
 

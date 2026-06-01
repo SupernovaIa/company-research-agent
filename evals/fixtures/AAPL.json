@@ -1,0 +1,15 @@
+{
+  "ticker": "AAPL",
+  "price": 196.45,
+  "currency": "USD",
+  "change_pct": -0.25,
+  "market_cap": 2950000000000.0,
+  "pe_ratio": 28.5,
+  "forward_pe": 26.2,
+  "eps": 6.89,
+  "dividend_yield": 0.0053,
+  "week52_high": 237.23,
+  "week52_low": 169.21,
+  "as_of": "2026-06-01T00:00:00+00:00",
+  "source": "Yahoo Finance"
+}

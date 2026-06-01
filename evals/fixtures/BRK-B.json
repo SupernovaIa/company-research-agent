@@ -1,0 +1,15 @@
+{
+  "ticker": "BRK-B",
+  "price": 518.90,
+  "currency": "USD",
+  "change_pct": 0.12,
+  "market_cap": 1120000000000.0,
+  "pe_ratio": 24.1,
+  "forward_pe": null,
+  "eps": null,
+  "dividend_yield": null,
+  "week52_high": 539.99,
+  "week52_low": 382.85,
+  "as_of": "2026-06-01T00:00:00+00:00",
+  "source": "Yahoo Finance"
+}
