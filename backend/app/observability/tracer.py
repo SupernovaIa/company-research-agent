@@ -96,7 +96,14 @@ class _RunTrace:
         except Exception:
             logger.debug("Langfuse record_guardrail failed", exc_info=True)
 
-    def finish(self, terminated_by: str, cost_usd: float, turns: int) -> None:
+    def finish(
+        self,
+        terminated_by: str,
+        cost_usd: float,
+        turns: int,
+        tool_calls: int = 0,
+        tool_errors: int = 0,
+    ) -> None:
         if self._root is None:
             return
         try:
@@ -105,6 +112,8 @@ class _RunTrace:
                     "terminated_by": terminated_by,
                     "total_cost_usd": cost_usd,
                     "total_turns": turns,
+                    "tool_calls": tool_calls,
+                    "tool_errors": tool_errors,
                 }
             )
             self._root.end()

@@ -4,71 +4,72 @@
 
 ## Sesión actual
 
-**Sesión:** block-F
+**Sesión:** block-G
 **Estado:** gate_pending
-**Fecha apertura:** 2026-05-31
-**Última actualización:** 2026-05-31
+**Fecha apertura:** 2026-06-01
+**Última actualización:** 2026-06-01
 
 ## Objetivo de la sesión
 
-Implementar la defensa en capas frente a indirect prompt injection (Spec 04, parte pendiente de block-E) y la checklist de red teaming con gate de bloqueo (Spec 09): system prompt que marca el contenido de tools como datos, delimitadores del contenido externo, clasificador de output con Haiku 4.5 y mínimo privilegio. Aceptar Spec 09 y completar Spec 04 (a aceptada del todo).
+Implementar Spec 06 (Serving + observabilidad): endpoint `/research` con SSE, instrumentación Langfuse enriquecida (tool_calls, tool_errors en la traza), las seis métricas de agente y el script `scripts/metrics.py`.
 
 ## Próxima acción concreta
 
-Abrir la PR de `feat/injection-redteam` a `main`, correr **security-review** sobre la PR (gate de este bloque, no code-review), postear el resultado como comentario y parar. Merge (squash) + tag `06-block-F` son acción humana.
+Abrir la PR de `feat/serving-obs` a `main`, correr **code-review** sobre la PR, postear el resultado como comentario y parar. Merge (squash) + tag `07-block-G` son acción humana.
 
 ## Pendientes en esta sesión
 
-- [ ] Merge (squash) de la PR a `main` y tag `06-block-F` (acción humana).
-- [ ] (Opcional) Backstop live del clasificador Haiku con evidencia en trazas Langfuse, bajo presupuesto controlado (modo live de `/redteam`).
+- [ ] Merge (squash) de la PR a `main` y tag `07-block-G` (acción humana).
+- [ ] (Pendiente block-H) Completar los acceptance criteria de Spec 06 que quedan abiertos: dashboard formal en Langfuse, desglose de coste por tool, `tool_use_accuracy` contra el set de eval anotado.
+- [ ] (Pendiente block-H) Recalibrar `agent_max_turns` contra el set de evaluación (p95 de turnos = 20 = hard limit en las trazas actuales).
 
 ## Completado en esta sesión
 
-- [x] **L1 · Delimitadores** (`backend/app/guardrails/injection.py`): `wrap_external_content` envuelve el contenido de tools en `<<UNTRUSTED_TOOL_CONTENT>> … <<END_UNTRUSTED_TOOL_CONTENT>>` y sanitiza falsificación de frontera y de turnos (`System:`/`User:`/`Assistant:`). Cableado en `agent/loop.py` al construir los `tool_result`.
-- [x] **L2 · System prompt** (`prompts/system_prompt_v1.md`): sección "Untrusted tool content (security)" — contenido de tools como datos, prohibición de obedecer instrucciones embebidas, revelar el prompt, cambiar de tarea, usar code execution para recomendar, emitir veredictos de compra/venta.
-- [x] **L3 · Clasificador de output** (`backend/app/guardrails/classifier.py`): pre-filtro determinista (`heuristic_scan`) + backstop semántico con **Haiku 4.5** (`GUARDRAIL_MODEL`), cliente dedicado con su propio timeout (`classifier_timeout_s=15`). El loop descarta el dossier (`terminated_by="guardrail_blocked"`) si no pasa. Degrada con elegancia: sin API key, modo solo-heurístico; error del clasificador no brickea el agente si la heurística pasó.
-- [x] **L4 · Mínimo privilegio** (`injection.py`): inventario read-only declarado; `capability_is_available` confirma que ninguna capacidad con efectos secundarios (send_email, delete, http_post, …) tiene tool.
-- [x] **Harness de red team** (`backend/app/redteam/`): `payloads.py` (24 payloads, fuente de verdad), `runner.py` (ejecuta cada payload contra su capa, `THRESHOLD=0.90`), `run.py` (`python -m app.redteam.run [--ci|--json]`, exit 1 si < umbral).
-- [x] **Checklist** (`security/red-team-checklist.md`): 24 payloads con OWASP, categoría, vector, capa esperada y resultado; sincronía con `payloads.py` verificada por test.
-- [x] **Slash command `/redteam`** cableado al runner determinista + modo live, delegando en el subagente `redteam-runner`.
-- [x] **Observabilidad** (`observability/tracer.py`): `record_guardrail` añade el span `output_guardrail` (capa que actuó, allowed, reason) a la traza.
-- [x] **ADR-013** (defensa en capas + red team, mapeo OWASP) e índice en `DECISIONS.md`.
-- [x] **Specs**: Spec 09 → aceptada; Spec 04 → aceptada del todo (sección de la capa de inyección añadida).
-- [x] **Tests** (todos verdes): `test_injection.py`, `test_classifier.py`, `test_redteam.py`, `conftest.py` (fixture autouse que neutraliza la llamada Haiku en los tests del loop). 84 passed.
+- [x] **SSE streaming** (`backend/app/serving/main.py`): `/research POST` convertido a `StreamingResponse` con `text/event-stream`. Emite un evento `turn` por turno (stop_reason, tool names) y un evento final `done` (dossier completo) o `error` (terminated_by, cost, turns). El loop corre en `asyncio.to_thread`; el callback `on_turn` pasa eventos al event loop vía `call_soon_threadsafe`.
+- [x] **Traza Langfuse enriquecida** (`observability/tracer.py`, `agent/loop.py`): el loop rastrea `total_tool_calls` y `total_tool_errors` por ejecución; `run_trace.finish()` los almacena en el campo `output` de la traza, junto con `terminated_by`, `total_cost_usd` y `total_turns`. Ya disponibles en Langfuse para el script de métricas.
+- [x] **`scripts/metrics.py`**: consulta Langfuse REST API (`/api/public/traces`) y calcula las seis métricas de Spec 06: task completion rate, tool error rate, latencia p50/p95/p99, coste mean/p50/p95, turnos mean/p50/p95, y nota sobre tool_use_accuracy (requiere set de eval). Alertas automáticas si p95 de coste o turnos supera el 80% del cap.
+- [x] **Test SSE** (`tests/test_guardrails.py`): `test_research_endpoint_exists` actualizado para verificar `text/event-stream` y el evento `error` en el stream. 82 passed.
+- [x] **Verificación en vivo**: agente corrido sobre MSFT con `AGENT_TIMEOUT_S=180` → dossier completo, 2 turnos, $0.074. Traza en Langfuse con `output.tool_calls=2, tool_errors=0`. `scripts/metrics.py` devuelve números reales: 33% completion rate, 5.1% tool error rate, latencia p50=0.5s/p95=14.8s, coste mean=$21.60 (inflado por trazas de desarrollo antiguas), turnos p50=2/p95=20.
 
 ## Subagentes usados en esta sesión
 
-- `redteam-runner`: cableado vía `/redteam` para ejecutar el harness y reportar PASS/FAIL (gate humano sobre el resultado, ADR-009).
+- Ninguno.
 
 ## Blockers
 
-- Ninguno.
+- Timeout transitorio en la API de Anthropic (≤30 s con `agent_timeout_s=30`). Resuelto usando `AGENT_TIMEOUT_S=180` para la ejecución de verificación. El valor de producción en `.env` es 30 s; revisar en block-H si los web_search siguen tardando más.
 
 ## Decisiones tomadas en esta sesión
 
-- **Gate de red team determinista y offline como canónico** (ADR-013): el runner ejercita cada capa sin llamar al modelo → gratis, reproducible, gateable en CI. El backstop semántico de Haiku (L3b) se valida aparte en modo live con evidencia en Langfuse. Evita un gate que dependa de API y red.
-- **Clasificador con Haiku 4.5** (distinto del agente Sonnet): sin sesgo de auto-aprobación (Spec 04).
-- **Pre-filtro heurístico determinista** además del clasificador semántico: bloquea lo obvio sin coste y hace cada capa verificable offline.
-- **Wrap uniforme de todos los `tool_result`**: defensa consistente; el delimitador solo enmarca datos.
-- **`terminated_by="guardrail_blocked"`**: nuevo estado cuando el clasificador descarta un dossier schema-válido pero inseguro.
+- **`asyncio.to_thread` + `call_soon_threadsafe`** para SSE: el loop síncrono corre en el thread pool del executor; los eventos se publican al event loop del endpoint vía queue thread-safe. Patrón estándar para bridging sync/async en FastAPI sin reescribir el loop.
+- **`tool_calls`/`tool_errors` en `finish()`**: se acumulan en el loop y se guardan en el campo `output` de la traza Langfuse (no en observaciones separadas), lo que permite calcular tool_error_rate en el script de métricas con una sola llamada API por ejecución.
+- **Tool error rate = `"error" in result.json_response`**: se considera error toda respuesta de tool que incluya la clave `"error"`, independientemente de si es recuperable o no. Consistente con `get_market_data` y `submit_dossier`.
 
 ## Coste de la sesión
 
-- ~$0 USD: el gate canónico es determinista (sin llamadas al modelo). No se ejecutó el agente en vivo (backstop Haiku/Langfuse documentado como paso complementario bajo presupuesto).
+- ~$0.074 USD: una corrida real del agente sobre MSFT con `AGENT_TIMEOUT_S=180` para generar evidencia en Langfuse.
 
 ## Notas de handoff
 
-- El backstop live del clasificador (Haiku + trazas Langfuse) está cableado (`record_guardrail`, span `output_guardrail`) pero no ejecutado en esta sesión para respetar la disciplina de coste. Modo live disponible en `/redteam`.
-- La heurística L3 es por patrones (regex): cubre lo obvio; lo semántico depende del backstop Haiku.
+- `scripts/metrics.py` usa la REST API de Langfuse directamente (stdlib `urllib`): sin dependencias extra, funciona con `uv run python ../scripts/metrics.py`.
+- El campo `latency` en las trazas de Langfuse (en segundos) está disponible en la respuesta de la API pero no se usa en el script (se calcula desde `createdAt`/`updatedAt`). Se puede simplificar en block-H leyendo `t.get("latency")` directamente.
+- El acceptance criterion del "dashboard mínimo" de Spec 06 se cubre con `scripts/metrics.py`; el dashboard gráfico de Langfuse está disponible en `https://cloud.langfuse.com/`.
+- Spec 06 marcada como `aceptada parcialmente`: SSE ✓, trazas enriquecidas ✓, 5 métricas computables ✓; tool_use_accuracy y desglose de coste por tool pendientes de block-H.
 
 ## Comandos útiles ahora
 
 ```bash
 cd backend
 
-# Gate de red team (determinista)
-uv run python -m app.redteam.run         # tabla
-uv run python -m app.redteam.run --ci    # gate (exit 1 si < 90%)
+# Métricas del agente (últimos 30 días)
+uv run python ../scripts/metrics.py
+uv run python ../scripts/metrics.py --days 7 --limit 50
+
+# Correr el agente en vivo
+AGENT_TIMEOUT_S=180 uv run python -m app.agent.run --ticker AAPL
+
+# Levantar el endpoint con SSE
+uv run uvicorn app.serving.main:app --reload
 
 # Suite de tests
 uv run pytest -q --ignore=tests/evals
@@ -76,9 +77,10 @@ uv run pytest -q --ignore=tests/evals
 
 ## Gate de revisión
 
-- **Criterio:** `/redteam` da PASS ≥ 90% y cada capa (L1–L4) bloquea su payload; las cuatro capas implementadas y cableadas; suite verde. **Gate de este bloque: security-review** (no code-review).
-- **Resultado:** pasa (pendiente gate de PR / security-review).
+- **Criterio:** SSE funciona (endpoint devuelve `text/event-stream`); `scripts/metrics.py` imprime números reales de Langfuse; traza en Langfuse con `tool_calls`/`tool_errors` en el output; suite verde. Gate de este bloque: **code-review**.
+- **Resultado:** pendiente (gate de PR).
 - **Evidencia:**
-  - `python -m app.redteam.run` → **24/24 PASS, bloqueo 100.0%** (umbral 90%), cobertura por capa `{L1:6, L2:5, L3:7, L4:6}`, exit 0.
-  - Suite completa: **84 passed** (`--ignore=tests/evals`).
-  - Span `output_guardrail` añadido a la traza Langfuse para evidencia de capa en modo live.
+  - `POST /research` → `200 text/event-stream`, evento `turn` por turno, evento `done`/`error` final.
+  - `scripts/metrics.py` → 100 trazas, 6 métricas impresas con números reales.
+  - Traza MSFT: `terminated_by=submit_dossier`, `total_turns=2`, `total_cost_usd=0.074`, `tool_calls=2`, `tool_errors=0`.
+  - Suite: **82 passed**.

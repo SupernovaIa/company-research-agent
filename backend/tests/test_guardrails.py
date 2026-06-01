@@ -23,7 +23,7 @@ client = TestClient(app)
 # ---------------------------------------------------------------------------
 
 def test_research_endpoint_exists():
-    """/research POST endpoint is wired and reachable (returns something, not 404)."""
+    """/research POST streams SSE (200 text/event-stream, not 404)."""
     with patch("app.agent.loop.run") as mock_run:
         mock_run.return_value = MagicMock(
             dossier=None,
@@ -32,8 +32,9 @@ def test_research_endpoint_exists():
             cost_usd=0.01,
         )
         response = client.post("/research", json={"ticker": "AAPL"})
-    # Should NOT be 404; may be 500 if no dossier produced, which is expected here.
-    assert response.status_code != 404
+    assert response.status_code == 200
+    assert "text/event-stream" in response.headers.get("content-type", "")
+    assert "event: error" in response.text
 
 
 def test_research_endpoint_empty_ticker_returns_422():

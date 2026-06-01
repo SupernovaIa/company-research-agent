@@ -176,6 +176,8 @@ def run(
     dossier: CompanyDossier | None = None
     terminated_by = "hard_limit"
     turn = 0
+    total_tool_calls = 0
+    total_tool_errors = 0
     # ADR-006: allow exactly one retry when submit_dossier validation fails.
     submit_attempts = 0
 
@@ -238,6 +240,11 @@ def run(
             if response.stop_reason == "tool_use":
                 tool_uses = _extract_client_tool_uses(response.content)
                 results = _execute_tools_parallel(tool_uses)
+
+                total_tool_calls += len(tool_uses)
+                total_tool_errors += sum(
+                    1 for r in results.values() if "error" in r.json_response
+                )
 
                 # Append the full assistant turn (includes server_tool_use blocks).
                 messages.append({"role": "assistant", "content": response.content})
@@ -333,7 +340,9 @@ def run(
             )
             terminated_by = "hard_limit"
 
-        run_trace.finish(terminated_by, total_cost, turn)
+        run_trace.finish(
+            terminated_by, total_cost, turn, total_tool_calls, total_tool_errors
+        )
 
     return LoopResult(
         dossier=dossier,
