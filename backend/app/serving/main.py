@@ -48,9 +48,13 @@ async def _research_stream(ticker: str) -> AsyncGenerator[str, None]:
     """Run the research loop in a thread pool and yield SSE events.
 
     Yields:
-        ``event: turn\\ndata: <json>\\n\\n``  per loop turn (stop_reason, tools).
-        ``event: done\\ndata: <json>\\n\\n``  on success (includes full dossier).
-        ``event: error\\ndata: <json>\\n\\n`` on failure (terminated_by, cost, turns).
+        ``event: turn``  — one per loop turn; data: {turn, stop_reason, tools}.
+        ``event: done``  — agent submitted a valid dossier; data: {dossier, terminated_by, cost_usd, turns}.
+        ``event: error`` — two payload shapes:
+            controlled failure (budget_exceeded, hard_limit, guardrail_blocked, …):
+                data: {terminated_by, cost_usd, turns}
+            unhandled exception (import error, API crash before first turn, …):
+                data: {error: "internal error"}
     """
     from app.agent.loop import run
 
@@ -100,7 +104,15 @@ async def _research_stream(ticker: str) -> AsyncGenerator[str, None]:
                 yield f"event: error\ndata: {json.dumps(payload)}\n\n"
                 break
     finally:
-        await task
+        # Cancel the background task so `await task` returns promptly when
+        # the client disconnects. The underlying thread (asyncio.to_thread)
+        # cannot be interrupted mid-call, but cancelling the task prevents
+        # the finally block from blocking until the full agent run finishes.
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 @app.post("/research")
@@ -113,7 +125,14 @@ async def research(request: Request, body: dict):  # noqa: ANN201 — mixed Resp
     Stream events:
         ``turn``  — one per loop turn; includes stop_reason and tool names called.
         ``done``  — final event on success; includes the full CompanyDossier.
-        ``error`` — final event on failure; includes terminated_by and cost.
+        ``error`` — final event on agent failure or crash; see ``_research_stream`` for
+                    the two distinct payload shapes.
+
+    Note on HTTP status: SSE always returns **HTTP 200** once the stream opens,
+    even when the agent fails. Agent-level failures (budget_exceeded, hard_limit,
+    guardrail_blocked, …) are signalled via ``event: error`` in the stream body.
+    Monitor agent health via Langfuse completion rate (``scripts/metrics.py``),
+    not via HTTP status codes.
     """
     ticker = (body.get("ticker") or "").strip().upper()
     if not ticker:
