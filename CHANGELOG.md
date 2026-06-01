@@ -10,6 +10,28 @@ Próximas entradas por sesión.
 
 ---
 
+## [block-G] - 2026-06-01
+
+### Añadido
+
+- **SSE streaming en `/research`** (`backend/app/serving/main.py`): el endpoint `POST /research` se convierte a `StreamingResponse` con `media_type="text/event-stream"`. Emite un evento `turn` por turno del loop (stop_reason, tool names) y un evento final `done` (dossier completo) o `error` (terminated_by, cost, turns). El loop síncrono corre en `asyncio.to_thread`; los eventos se publican al event loop vía `asyncio.Queue` + `call_soon_threadsafe`.
+- **Trazas Langfuse enriquecidas** (`observability/tracer.py`, `agent/loop.py`): el loop acumula `total_tool_calls` y `total_tool_errors` por ejecución (error = `"error" in result.json_response`). `run_trace.finish()` los incluye en el campo `output` de la traza junto con `terminated_by`, `total_cost_usd` y `total_turns`. Disponibles inmediatamente en Langfuse para el script de métricas.
+- **`scripts/metrics.py`** (nuevo, solo stdlib): consulta la Langfuse REST API y calcula las seis métricas de agente definidas en Spec 06: (1) task completion rate con desglose por `terminated_by`; (2) tool error rate (errores / total tool calls); (3) latencia p50/p95/p99; (4) coste mean/p50/p95; (5) turnos mean/p50/p95; (6) nota sobre tool_use_accuracy (requiere set de eval). Alerta si p95 de coste o turnos supera el 80% del cap configurado. Uso: `cd backend && uv run python ../scripts/metrics.py [--days N] [--limit N]`.
+
+### Cambiado
+
+- **`tests/test_guardrails.py`**: `test_research_endpoint_exists` actualizado para verificar respuesta SSE (`200 text/event-stream`, evento `error` en el stream) en lugar de la antigua respuesta JSON 5xx.
+- **`specs/06-serving-metrics.md`**: estado `pre-construida` → `aceptada parcialmente` (SSE ✓, trazas ✓, 5 métricas ✓; tool_use_accuracy y desglose de coste por tool pendientes de block-H).
+
+### Notas
+
+- Verificación en vivo: `AGENT_TIMEOUT_S=180 uv run python -m app.agent.run --ticker MSFT` → `terminated_by=submit_dossier`, 2 turnos, $0.074. Traza en Langfuse con `tool_calls=2, tool_errors=0`.
+- `scripts/metrics.py` sobre 100 trazas (últimos 90 días): 33% completion rate, 5.1% tool error rate, latencia p50=0.5s/p95=14.8s, turnos p50=2/p95=20.
+- Suite: **82 passed** (`--ignore=tests/evals`).
+- Coste: ~$0.074 USD (una corrida real de verificación sobre MSFT).
+
+---
+
 ## [block-F] - 2026-05-31
 
 ### Añadido
