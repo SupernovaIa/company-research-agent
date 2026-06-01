@@ -26,7 +26,7 @@ from app.tools.client import ToolResult, dispatch_client_tool as _orig_dispatch
 
 logger = logging.getLogger(__name__)
 
-_REPO_ROOT = Path(__file__).resolve().parents[4]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 GOLD_JSONL = _REPO_ROOT / "evals" / "gold.jsonl"
 FIXTURES_DIR = _REPO_ROOT / "evals" / "fixtures"
 

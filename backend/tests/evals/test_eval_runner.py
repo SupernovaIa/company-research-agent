@@ -17,6 +17,7 @@ import pytest
 from app.agent.loop import LoopResult
 from app.dossier.models import Company, CompanyDossier, MarketData, RunMeta
 from app.evals.runner import (
+    GOLD_JSONL,
     TASK_COMPLETION_THRESHOLD,
     TOOL_ACCURACY_THRESHOLD,
     EvalReport,
@@ -335,3 +336,20 @@ def test_run_eval_entry_result_fields(tmp_path):
     assert r.turns == 4
     assert r.cost_usd == pytest.approx(0.07)
     assert "get_market_data" in r.actual_tool_calls
+
+
+# ---------------------------------------------------------------------------
+# Tests: path resolution (review finding #1)
+# ---------------------------------------------------------------------------
+
+def test_gold_jsonl_resolves_to_repo_root():
+    """GOLD_JSONL must resolve inside the repo, not its parent directory."""
+    # parents[3] from backend/app/evals/runner.py reaches the repo root.
+    # If parents[4] were used, the path would point outside the repo and
+    # gold.jsonl would not exist.
+    assert GOLD_JSONL.exists(), (
+        f"GOLD_JSONL does not exist: {GOLD_JSONL}\n"
+        "This usually means _REPO_ROOT uses the wrong parents[] depth."
+    )
+    # Sanity: the resolved path must contain the project directory name.
+    assert "company-research-agent" in str(GOLD_JSONL)
