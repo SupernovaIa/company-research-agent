@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     agent_max_turns: int = 20    # hard limit; recalibrate against eval set in block-H
     agent_budget_usd: float = 0.50  # ADR-007 range 0.30–0.80; provisional for block-E
     agent_timeout_s: int = 120   # Anthropic client timeout per request (seconds)
+    # SDK auto-retries on timeout/connection errors. Default 2 (= 3 total attempts).
+    # Set to 1 in eval CI (AGENT_MAX_RETRIES=1) so a slow entry waits at most
+    # 2 × timeout_s before being counted as failed, keeping the gate bounded.
+    agent_max_retries: int = 2
     # Output guardrail classifier (Spec 04, block-F): dedicated client, short call.
     classifier_timeout_s: int = 15  # Haiku classifier timeout per request (seconds)
 

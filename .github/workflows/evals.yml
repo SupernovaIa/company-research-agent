@@ -19,7 +19,12 @@ jobs:
       # Keep eval runs short to bound cost (~$0.05–0.15 per entry × 13 = ~$0.65–2.00).
       # System prompt + tools are cached after the first turn; subsequent turns cheaper.
       AGENT_MAX_TURNS: "10"
-      AGENT_TIMEOUT_S: "120"
+      # 300 s gives web_search server-side calls enough headroom (120 s was too tight).
+      AGENT_TIMEOUT_S: "300"
+      # 1 retry (= 2 total attempts) instead of the SDK default of 2 (= 3 attempts).
+      # With per-entry isolation (Fix A), a slow entry waits at most 2 × 300 = 600 s
+      # before being counted as failed and the gate moving on, vs 3 × 300 = 900 s.
+      AGENT_MAX_RETRIES: "1"
 
     steps:
       - name: Checkout

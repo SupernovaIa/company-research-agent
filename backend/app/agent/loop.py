@@ -151,6 +151,7 @@ def run(
     client = anthropic.Anthropic(
         api_key=settings.anthropic_api_key or None,
         timeout=settings.agent_timeout_s,
+        max_retries=settings.agent_max_retries,
     )
     tracer = get_tracer()
 
