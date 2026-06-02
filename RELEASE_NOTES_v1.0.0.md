@@ -32,7 +32,7 @@ Medidas en la corrida de release (2026-06-02):
 - **Tool use accuracy**: 100% (13/13)
 - **Seguridad (block rate)**: 100% (24/24 payloads bloqueados)
 - **Mean cost por ejecución**: $0.044
-- **p95 cost por ejecución**: $0.055
+- **p95 cost por ejecución**: $0.053
 - **Turnos típicos**: 2–4 (p95 = 4)
 - **Suite de tests**: 107 passed
 
