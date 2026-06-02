@@ -92,7 +92,7 @@ EVAL_TEMPERATURE = 0.0
 # This tolerates exactly one entry failing (infra error, model regression on
 # one ticker) without blocking the merge.  Calibrated against a confirmed
 # 13/13 baseline run; recalibrate if the gold set size changes.
-TASK_COMPLETION_THRESHOLD = 0.92
+TASK_COMPLETION_THRESHOLD = 1.01  # TEST ONLY: intentionally impossible — gate must fail
 TOOL_ACCURACY_THRESHOLD = 0.80
 
 # Per-entry turn limit for eval runs (keeps cost bounded).
