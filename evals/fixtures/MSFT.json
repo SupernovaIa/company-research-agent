@@ -1,0 +1,15 @@
+{
+  "ticker": "MSFT",
+  "price": 456.78,
+  "currency": "USD",
+  "change_pct": 0.32,
+  "market_cap": 3400000000000.0,
+  "pe_ratio": 37.2,
+  "forward_pe": 32.8,
+  "eps": 12.27,
+  "dividend_yield": 0.0067,
+  "week52_high": 478.90,
+  "week52_low": 356.20,
+  "as_of": "2026-06-01T00:00:00+00:00",
+  "source": "Yahoo Finance"
+}

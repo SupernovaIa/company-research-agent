@@ -101,3 +101,77 @@ TOOLS: list[dict] = [
     CODE_EXECUTION_TOOL,
     SUBMIT_DOSSIER_TOOL,
 ]
+
+# ---------------------------------------------------------------------------
+# Eval-mode tool inventory (Spec 07, block-H)
+#
+# In production, web_search and web_fetch are server tools: Anthropic executes
+# them inside its infrastructure and returns results in the same HTTP response,
+# making client-side interception impossible.  In eval mode these are replaced
+# by semantically-equivalent client tools with the same ``name``.  The model
+# generates identical ``tool_use`` blocks either way; the difference is that
+# the runner intercepts the call and returns a pre-recorded fixture, making the
+# gate fully deterministic without mocking the model response.
+#
+# code_execution is omitted: it never appears in gold-set ``expected_tool_calls``
+# (always ``optional_tool_calls``), so omitting it has no effect on the gate
+# metrics.  Including it would require fixturing Python execution output, which
+# adds complexity without measurable benefit.
+#
+# NOTE: The descriptions below are deliberate approximations of the Anthropic
+# server-tool behaviour.  A description that is too weak will cause the model to
+# skip web_search and lower tool_use_accuracy through a fixture artefact, not a
+# real regression.  Review if tool_use_accuracy drops unexpectedly.
+# ---------------------------------------------------------------------------
+
+WEB_SEARCH_EVAL_TOOL: dict = {
+    "name": "web_search",
+    "description": (
+        "Search the web for current information about a company: recent news, "
+        "business overview, earnings results, strategic initiatives, executive "
+        "commentary, and other publicly available facts. Use before web_fetch — "
+        "first run a search to find relevant URLs, then fetch a specific URL only "
+        "if the snippet lacks enough detail to write a citable fact or news item. "
+        "Every key_fact and news_item in the dossier must cite a source retrieved "
+        "this way; do not invent information. Returns a list of results each with "
+        "title, URL, and content excerpt."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "The search query, e.g. 'Apple Inc Q1 2026 earnings results'.",
+            },
+        },
+        "required": ["query"],
+    },
+}
+
+WEB_FETCH_EVAL_TOOL: dict = {
+    "name": "web_fetch",
+    "description": (
+        "Retrieve the full text of a specific web page by URL. Use after "
+        "web_search when a search snippet does not contain enough detail to "
+        "write a precise citable fact or news item. Returns the page title, "
+        "URL, and full content."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "url": {
+                "type": "string",
+                "description": "The full URL of the page to fetch.",
+            },
+        },
+        "required": ["url"],
+    },
+}
+
+# Eval tool list: server tools replaced by client equivalents; code_execution omitted.
+EVAL_TOOLS: list[dict] = [
+    GET_MARKET_DATA_TOOL,
+    WEB_SEARCH_EVAL_TOOL,
+    WEB_FETCH_EVAL_TOOL,
+    SUBMIT_DOSSIER_TOOL,
+]

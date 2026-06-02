@@ -1,0 +1,15 @@
+{
+  "ticker": "SAP.DE",
+  "price": 248.50,
+  "currency": "EUR",
+  "change_pct": null,
+  "market_cap": 298200000000.0,
+  "pe_ratio": 52.3,
+  "forward_pe": null,
+  "eps": null,
+  "dividend_yield": 0.0125,
+  "week52_high": 272.85,
+  "week52_low": 178.90,
+  "as_of": "2026-06-01T00:00:00+00:00",
+  "source": "Yahoo Finance"
+}

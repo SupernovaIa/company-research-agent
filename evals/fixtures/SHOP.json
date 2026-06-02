@@ -1,0 +1,15 @@
+{
+  "ticker": "SHOP",
+  "price": 98.45,
+  "currency": "USD",
+  "change_pct": 0.85,
+  "market_cap": 124800000000.0,
+  "pe_ratio": null,
+  "forward_pe": null,
+  "eps": null,
+  "dividend_yield": null,
+  "week52_high": 118.75,
+  "week52_low": 57.99,
+  "as_of": "2026-06-01T00:00:00+00:00",
+  "source": "Yahoo Finance"
+}

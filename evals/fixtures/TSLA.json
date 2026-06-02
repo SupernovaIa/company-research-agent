@@ -1,0 +1,15 @@
+{
+  "ticker": "TSLA",
+  "price": 289.34,
+  "currency": "USD",
+  "change_pct": 2.15,
+  "market_cap": 927800000000.0,
+  "pe_ratio": 181.4,
+  "forward_pe": 98.7,
+  "eps": 1.59,
+  "dividend_yield": null,
+  "week52_high": 414.50,
+  "week52_low": 138.80,
+  "as_of": "2026-06-01T00:00:00+00:00",
+  "source": "Yahoo Finance"
+}

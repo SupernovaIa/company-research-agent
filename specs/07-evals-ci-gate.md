@@ -1,6 +1,6 @@
 # Spec 07 · Evals en CI como gate de PR
 
-**Estado:** pre-construida (se implementa en Fase 5, block-H)
+**Estado:** aceptada (implementada en block-H, 2026-06-01; eval mode con server tools fixturizadas, 2026-06-02)
 **Fase:** 5 · Evals + CI (block-H)
 **Dependencias:** Spec 08 (set de evaluación), Spec 06 (métricas)
 
@@ -42,3 +42,16 @@ Tener un workflow de GitHub Actions que corra el set de evaluación contra el ag
 
 - Umbral de coste medio: fijar contra el presupuesto por ejecución acordado en la Fase 3 (block-E).
 - Frecuencia de ejecución: en cada push vs solo en PR a `main`. Decidir según minutos de Actions disponibles.
+
+## Nota sobre eval mode vs producción (2026-06-02)
+
+**Las métricas del gate NO son métricas de producción 1:1.** El runner ejecuta el agente en "eval mode":
+
+- `web_search` y `web_fetch` son **client tools** con fixtures pre-grabados en `evals/fixtures/web_search/` y `evals/fixtures/web_fetch/`. En producción son server tools ejecutadas por Anthropic — sus resultados no pueden interceptarse desde el cliente.
+- `get_market_data` usa fixture de `evals/fixtures/<TICKER>.json` en lugar de llamar a yfinance.
+- `code_execution` se omite del inventario de eval (nunca está en `expected_tool_calls`).
+- El modelo se llama en vivo a `temperature=0` para reducir la varianza entre corridas.
+
+El gate mide si el modelo **elige llamar las tools correctas** y **produce un dossier válido** desde el contenido de los fixtures. Detecta regresiones en lógica de tool selection y en validación del dossier, no en la calidad de los datos reales.
+
+El job de evaluación **end-to-end en vivo** (sin fixtures, web_search y web_fetch contra URLs reales) está reservado para el job programado nocturno, no para el gate de cada PR.

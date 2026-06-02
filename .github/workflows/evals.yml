@@ -1,0 +1,117 @@
+name: eval-gate
+
+# DEUDA TÉCNICA (block-I): la suite de tests unitarios y la batería de
+# redteam/seguridad NO corren en CI — solo en local con /redteam y pytest.
+# Tras el bypass del clasificador L3 en eval mode (block-H), el CI no tiene
+# red de seguridad automática ante regresiones del guardrail. Pendiente:
+# añadir un job `unit-tests` (uv run pytest -q --ignore=tests/evals) y un job
+# `redteam` (uv run python -m app.redteam.run --ci) al workflow de PR.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  eval-gate:
+    runs-on: ubuntu-latest
+
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+      LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+      # Keep eval runs short to bound cost (~$0.05–0.15 per entry × 13 = ~$0.65–2.00).
+      # System prompt + tools are cached after the first turn; subsequent turns cheaper.
+      AGENT_MAX_TURNS: "10"
+      # 300 s gives web_search server-side calls enough headroom (120 s was too tight).
+      AGENT_TIMEOUT_S: "300"
+      # 1 retry (= 2 total attempts) instead of the SDK default of 2 (= 3 attempts).
+      # With per-entry isolation (Fix A), a slow entry waits at most 2 × 300 = 600 s
+      # before being counted as failed and the gate moving on, vs 3 × 300 = 900 s.
+      AGENT_MAX_RETRIES: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        working-directory: backend
+        run: uv sync
+
+      - name: Run eval gate
+        id: eval
+        working-directory: backend
+        # --ci exits 1 if any gate metric is below threshold.
+        # --json writes eval-report.json for the comment step.
+        run: uv run python -m app.evals.runner --ci --json
+
+      - name: Post eval report to PR
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            let body;
+            try {
+              const raw = fs.readFileSync('backend/eval-report.json', 'utf8');
+              const r = JSON.parse(raw);
+              const t = r.thresholds;
+              const badge = r.gate_pass ? '✅ PASS' : '❌ FAIL';
+
+              body = `## Eval Gate: ${badge}\n\n`;
+              body += `| Metric | Value | Threshold | Status |\n`;
+              body += `|--------|-------|-----------|--------|\n`;
+              body += `| task_completion_rate | ${(r.task_completion_rate * 100).toFixed(1)}% | ≥${(t.task_completion * 100).toFixed(0)}% | ${r.task_completion_pass ? '✅' : '❌'} |\n`;
+              body += `| tool_use_accuracy | ${(r.tool_use_accuracy * 100).toFixed(1)}% | ≥${(t.tool_accuracy * 100).toFixed(0)}% | ${r.tool_accuracy_pass ? '✅' : '❌'} |\n`;
+              body += `| mean_cost_usd | $${r.mean_cost_usd.toFixed(4)} | ≤$${t.cost_budget.toFixed(2)} | ${r.cost_pass ? '✅' : '❌'} |\n`;
+
+              if (r.failures.length > 0) {
+                body += `\n**Failed gates:**\n${r.failures.map(f => `- ${f}`).join('\n')}\n`;
+              }
+
+              body += `\n<details><summary>Per-entry results (${r.total_entries} entries)</summary>\n\n`;
+              body += `| Ticker | Category | Done | Accurate | Cost | Turns |\n`;
+              body += `|--------|----------|------|----------|------|-------|\n`;
+              for (const e of r.results) {
+                body += `| \`${e.ticker}\` | ${e.category} | ${e.task_completion ? '✅' : '❌'} | ${e.tool_use_accurate ? '✅' : '❌'} | $${e.cost_usd.toFixed(4)} | ${e.turns} |\n`;
+              }
+              body += `\n</details>`;
+            } catch (err) {
+              body = `## Eval Gate: ❌ ERROR\n\nFailed to read eval-report.json: ${err.message}`;
+            }
+
+            // Update existing comment or create a new one.
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const marker = '## Eval Gate:';
+            const existing = comments.find(c => c.user.type === 'Bot' && c.body.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

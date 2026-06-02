@@ -10,6 +10,52 @@ Próximas entradas por sesión.
 
 ---
 
+## [block-H] - 2026-06-01 / 2026-06-02
+
+### Añadido
+
+- **`evals/gold.jsonl`** (13 entradas firmadas): set de comportamiento anotado con dos invocaciones paralelas del subagente `gold-annotator` (lotes A y B); firmado humano. Cobertura: 6 cotizadas USA large-cap, 1 USA mid-cap, 1 europea completa (ASML.AS), 2 europeas con datos parciales (SAP.DE, MC.PA), 1 ticker japonés con datos parciales (7203.T), 2 tickers inexistentes. Cada entrada: `expected_tool_calls`, `optional_tool_calls`, `task_completion_expected`, `dossier_checks`, `category`, `annotation_notes`.
+- **`evals/fixtures/`** (39 ficheros): market data (13), web_search (13 con ≥4 resultados y noticias fechadas), web_fetch (13 con hechos y fechas explícitas para poblar key_facts y recent_news con holgura). Tickers inexistentes con fixture de error y resultados vacíos.
+- **`backend/app/tools/inventory.py`** — `EVAL_TOOLS`: versiones client-tool de `web_search` y `web_fetch` (mismo `name`, sin `type`, con `input_schema` y `description` escrita para el modelo). `code_execution` omitido en eval (nunca en `expected_tool_calls`). Comentario explicando el mecanismo y la diferencia vs server tools.
+- **`backend/app/agent/loop.py`** — parámetros `tools: list[dict] | None = None` y `temperature: float | None = None` en `run()`. No-breaking: todos los callers existentes obtienen comportamiento por defecto. `_build_tools_with_cache` acepta una lista de tools opcional.
+- **`backend/app/evals/runner.py`**: eval mode completo.
+  - Dispatch extendido: market data, web_search, web_fetch sirven fixtures; `submit_dossier` corre en vivo (Pydantic validation).
+  - Guardrail L3 (Haiku) bypaseado en eval: el gate mide comportamiento del agente, no el clasificador. Patrón idéntico al `conftest.py` autouse de tests unitarios.
+  - Retry de infra: `APITimeoutError`/`APIConnectionError` → hasta 2 reintentos antes de marcar `runner_infra_error`. Otros errores → `runner_error` (fallo de comportamiento, sin retry). El log distingue claramente el origen.
+  - Preflight ruidoso para los tres tipos de fixture (market data, web_search, web_fetch): lanza `FileNotFoundError` antes de gastar tokens.
+  - `EVAL_TEMPERATURE = 0.0` para reducir varianza entre corridas.
+  - `TASK_COMPLETION_THRESHOLD = 0.92` (≡ ≥12/13 con 13 entradas); `TOOL_ACCURACY_THRESHOLD = 0.80`.
+  - `EvalReport` incluye `thresholds` y booleans por métrica para que el JS del workflow no hardcodee umbrales.
+  - CLI: `--ci`, `--json`, `--max-turns`.
+- **`backend/tests/evals/test_eval_runner.py`** (25 tests): cubre preflight de 3 tipos de fixture, wiring de EVAL_TOOLS y temperature, retry de infra (éxito en retry, agotamiento de retries, separación infra/behaviour), gate pass/fail, path resolution.
+- **`.github/workflows/evals.yml`**: `AGENT_TIMEOUT_S: 300`, `AGENT_MAX_RETRIES: 1`. Umbrales leídos del JSON report (no hardcodeados en JS). Deuda CI anotada en comentario (suite tests + redteam no corren en CI aún).
+
+### Cambiado
+
+- **`backend/app/config.py`**: `agent_max_retries: int = 2` (nuevo campo, default SDK; CI lo sobreescribe a 1 via `AGENT_MAX_RETRIES`).
+- **`specs/04-guardrails.md`**: incidente FP-001 registrado — clasificador Haiku bloqueando comparaciones precio/52-semanas en dossiers válidos.
+- **`specs/07-evals-ci-gate.md`**: nota de divergencia eval mode vs producción; estado actualizado.
+- **`specs/08-gold-dataset.md`**: estado `pre-construida` → `aceptada`.
+
+### Decisiones documentadas
+
+- **Server tools como client tools en eval**: web_search y web_fetch se reemplazan en eval por client tools homónimas. El modelo genera el mismo `tool_use` block; el runner sirve fixtures. Único mecanismo que intercepta server tools sin mockear la respuesta HTTP completa.
+- **Bypass guardrail L3 en eval**: el gate mide tool selection y dossier quality; el guardrail tiene su propia redteam suite. Incluyéndolo se introduce non-determinismo del clasificador Haiku.
+- **Retry de infra por entrada**: distingue fallos transitorios (timeout, red) de fallos de comportamiento. Evita que una racha de timeouts infle artificialmente el tase de fallos del gate.
+- **`TASK_COMPLETION_THRESHOLD = 0.92`**: con 13 entradas, pasa si ≥12/13 completan; falla si ≤11. Calibrado contra corrida 13/13 confirmada.
+
+### Verificaciones en vivo
+
+- Gate verde: run CI `26807268026`, 13/13, task_completion 100%, tool_use_accuracy 100%, mean_cost $0.044.
+- Gate bloquea: PR #10 (`test/eval-gate-blocks`, threshold=1.01), run CI `26808493987` FAILURE (exit 1). PR descartada.
+
+### Notas
+
+- Suite completa: **107 passed** (82 existentes + 25 del eval runner). Coste sesión: ~$4–5 USD (3 corridas locales + ~4 corridas CI incluyendo la PR de prueba).
+- El workflow `eval-gate` requiere el secret `ANTHROPIC_API_KEY`. Sin él el job falla antes de correr entradas.
+
+---
+
 ## [block-G] - 2026-06-01
 
 ### Añadido

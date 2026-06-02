@@ -1,0 +1,15 @@
+{
+  "ticker": "MC.PA",
+  "price": 596.40,
+  "currency": "EUR",
+  "change_pct": null,
+  "market_cap": 298500000000.0,
+  "pe_ratio": 18.7,
+  "forward_pe": null,
+  "eps": null,
+  "dividend_yield": 0.0215,
+  "week52_high": 748.60,
+  "week52_low": 520.40,
+  "as_of": "2026-06-01T00:00:00+00:00",
+  "source": "Yahoo Finance"
+}

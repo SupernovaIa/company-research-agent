@@ -1,6 +1,6 @@
 # Spec 08 · Set de evaluación del agente
 
-**Estado:** pre-construida (se implementa en Fase 5, block-H)
+**Estado:** aceptada (implementada en block-H, 2026-06-01)
 **Fase:** 5 · Evals + CI (block-H)
 **Dependencias:** Spec 01 (schema del Dossier), Spec 02 (tools)
 
