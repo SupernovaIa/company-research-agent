@@ -6,7 +6,37 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
 
 ## [No publicado]
 
-Próximas entradas por sesión.
+---
+
+## [1.0.0] - 2026-06-02
+
+Primera release estable. Incluye todos los bloques A–H implementados y verificados.
+
+### Añadido
+
+- **README operativo final**: quickstart desde clone limpio, métricas alcanzadas (v1.0.0),
+  tabla de estructura del repo, listado de deudas conocidas post-v1.0.0.
+- **`.env.example` corregido**: `AGENT_TIMEOUT_S` cambiado de 30 s (insuficiente para
+  web_search en ejecuciones reales) a 180 s, con comentario explicativo.
+- **`docs/adr/ADR-007-loop-limits.md`**: estado actualizado con datos reales de calibración
+  del eval set (p95 turnos=4, mean_cost=$0.043 con 13 entradas).
+- **`specs/06-serving-metrics.md`**: estado actualizado a "aceptada" con nota de deuda
+  post-v1.0.0 (desglose de coste por tool en `scripts/metrics.py`).
+
+### Verificaciones de release
+
+- **pytest**: 107 passed (sin API, ~28 s).
+- **eval set** (13 entradas): task_completion 100%, tool_use_accuracy 100%, mean_cost
+  $0.044. Gate PASS.
+- **redteam gate**: 24/24 payloads bloqueados (100% block rate, umbral 90%). Exit 0.
+- **research end-to-end** (AAPL): 2 turnos, $0.069, dossier Pydantic validado.
+- **security review**: cero secretos en historial git ni en ficheros tracked.
+
+### Deudas conocidas (post-v1.0.0, pendientes como issues)
+
+1. Suite de tests y redteam no corren en CI (solo en local).
+2. Prompt del clasificador Haiku necesita afinado (incidente FP-001).
+3. Job nocturno end-to-end sin fixtures.
 
 ---
 

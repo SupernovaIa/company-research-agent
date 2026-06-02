@@ -1,6 +1,6 @@
 # Spec 06 · Serving, métricas y observabilidad
 
-**Estado:** aceptada parcialmente (SSE ✓, trazas enriquecidas ✓, 5 métricas computables ✓; tool_use_accuracy y desglose de coste por tool pendientes de block-H)
+**Estado:** aceptada (SSE ✓, trazas enriquecidas ✓, 5 métricas computables ✓, tool_use_accuracy en eval runner ✓; desglose de coste por tool en scripts/metrics.py pendiente post-v1.0.0)
 **Fase:** 4 · Serving + observabilidad (block-G). Instrumentación cruda de Langfuse adelantada a block-C.
 **Dependencias:** Spec 03 (loop), Spec 05 (output estructurado), Spec 04 (guardrails)
 

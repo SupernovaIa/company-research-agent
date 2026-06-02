@@ -1,6 +1,6 @@
 # ADR-007: Límites del loop, tope de turnos y presupuesto
 
-**Estado:** aceptado (firmado en block-B 2026-05-31; topes provisionales implementados en block-C; recalibración definitiva en block-E)
+**Estado:** aceptado (firmado en block-B 2026-05-31; topes provisionales implementados en block-C; recalibrado en block-E con datos reales: p95 turnos=4, mean_cost=$0.043 con 13 entradas del eval set)
 **Fecha:** 2026-05-31
 **Tags:** loop, guardrails, coste, presupuesto
 
