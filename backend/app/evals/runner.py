@@ -22,6 +22,15 @@ outage cannot break the gate.  The **model is still called live** — that is
 what the gate measures: which tools the model chooses to call and whether it
 produces a valid dossier from the fixture content.
 
+The **output guardrail classifier** (Haiku) is bypassed in eval mode.
+Rationale: the gate measures research agent behaviour (tool selection, dossier
+validity); the guardrail has its own dedicated tests (redteam suite and
+``test_classifier.py``).  Including the guardrail in the gate would add
+non-determinism from the Haiku classifier's own sampling variance and would
+cause false negatives when valid research dossiers are blocked for stylistic
+reasons.  The bypass mirrors the ``conftest.py`` autouse fixture used in unit
+tests.
+
 The model is called at temperature=0 to reduce between-run variance and
 keep gate thresholds stable across re-runs.
 
@@ -43,10 +52,25 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from unittest.mock import patch
 
+import anthropic as _anthropic
+
 from app.agent.loop import run as loop_run
 from app.config import settings
+from app.guardrails.classifier import Verdict
 from app.tools.client import ToolResult, dispatch_client_tool as _orig_dispatch
 from app.tools.inventory import EVAL_TOOLS
+
+# Transient infrastructure exceptions that warrant an entry-level retry.
+_INFRA_EXCEPTIONS = (
+    _anthropic.APITimeoutError,
+    _anthropic.APIConnectionError,
+)
+# Max per-entry retries for transient infra errors before counting as failed.
+EVAL_ENTRY_MAX_RETRIES = 2
+
+# Guardrail verdict injected in eval mode: always allow so gate variance comes
+# only from the model, not from the Haiku classifier's own sampling.
+_EVAL_GUARDRAIL_VERDICT = Verdict(allowed=True, reason="eval-mode bypass", layer="eval")
 
 logger = logging.getLogger(__name__)
 
@@ -225,35 +249,74 @@ def run_eval(
                 return ToolResult(json_response=_wf)
             return _orig_dispatch(name, input_data)
 
-        with patch("app.agent.loop.dispatch_client_tool", side_effect=_patched_dispatch):
-            try:
-                loop_result = loop_run(
-                    ticker,
-                    max_turns=max_turns,
-                    on_turn=on_turn,
-                    tools=EVAL_TOOLS,
-                    temperature=EVAL_TEMPERATURE,
-                )
-            except Exception as exc:
-                # An APITimeoutError, connection error, or any unexpected exception
-                # in a single entry must not abort the whole gate run.  Count the
-                # entry as failed and continue with the remaining tickers.
-                logger.error(
-                    "[%s] loop_run raised %s: %s — counting as failed entry",
-                    ticker, type(exc).__name__, exc,
-                )
-                results.append(EntryResult(
-                    ticker=ticker,
-                    category=entry["category"],
-                    task_completion_expected=task_completion_expected,
-                    terminated_by="runner_error",
-                    task_completion=False,
-                    tool_use_accurate=False,
-                    actual_tool_calls=[],
-                    expected_tool_calls=sorted(expected_calls),
-                    cost_usd=0.0,
-                    turns=0,
-                ))
+        with patch("app.agent.loop.dispatch_client_tool", side_effect=_patched_dispatch), \
+             patch("app.agent.loop.classify_dossier",
+                   side_effect=lambda dossier, **kw: _EVAL_GUARDRAIL_VERDICT):
+            loop_result = None
+            for attempt in range(1, EVAL_ENTRY_MAX_RETRIES + 2):  # attempts = retries + 1
+                actual_calls.clear()
+                try:
+                    loop_result = loop_run(
+                        ticker,
+                        max_turns=max_turns,
+                        on_turn=on_turn,
+                        tools=EVAL_TOOLS,
+                        temperature=EVAL_TEMPERATURE,
+                    )
+                    break  # success — exit retry loop
+                except _INFRA_EXCEPTIONS as exc:
+                    # Transient infra error (timeout, connection drop).
+                    # Retry up to EVAL_ENTRY_MAX_RETRIES times before giving up.
+                    if attempt <= EVAL_ENTRY_MAX_RETRIES:
+                        logger.warning(
+                            "[%s] infra error on attempt %d/%d (%s: %s) — retrying",
+                            ticker, attempt, EVAL_ENTRY_MAX_RETRIES + 1,
+                            type(exc).__name__, exc,
+                        )
+                    else:
+                        logger.error(
+                            "[%s] infra error after %d attempts (%s: %s) — "
+                            "counting as failed entry (infra, not behaviour)",
+                            ticker, attempt, type(exc).__name__, exc,
+                        )
+                        results.append(EntryResult(
+                            ticker=ticker,
+                            category=entry["category"],
+                            task_completion_expected=task_completion_expected,
+                            terminated_by="runner_infra_error",
+                            task_completion=False,
+                            tool_use_accurate=False,
+                            actual_tool_calls=[],
+                            expected_tool_calls=sorted(expected_calls),
+                            cost_usd=0.0,
+                            turns=0,
+                        ))
+                        loop_result = None
+                        break
+                except Exception as exc:
+                    # Non-infra exception (e.g. bug in the runner, validation error).
+                    # Do not retry — log and mark as behaviour failure.
+                    logger.error(
+                        "[%s] unexpected error (%s: %s) — "
+                        "counting as failed entry (behaviour, not infra)",
+                        ticker, type(exc).__name__, exc,
+                    )
+                    results.append(EntryResult(
+                        ticker=ticker,
+                        category=entry["category"],
+                        task_completion_expected=task_completion_expected,
+                        terminated_by="runner_error",
+                        task_completion=False,
+                        tool_use_accurate=False,
+                        actual_tool_calls=[],
+                        expected_tool_calls=sorted(expected_calls),
+                        cost_usd=0.0,
+                        turns=0,
+                    ))
+                    loop_result = None
+                    break
+
+            if loop_result is None:
                 continue
 
         actual_set = set(actual_calls)

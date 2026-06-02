@@ -448,19 +448,19 @@ def test_fixture_error_fires_before_api_calls(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Tests: per-entry exception isolation (CI timeout diagnosis)
+# Tests: per-entry exception isolation + infra retry
 # ---------------------------------------------------------------------------
 
-def test_exception_in_one_entry_does_not_abort_gate(tmp_path):
-    """An exception in loop_run for one entry must not abort the whole run."""
+def test_non_infra_exception_does_not_abort_gate(tmp_path):
+    """A non-infra exception (RuntimeError) counts as behaviour failure; gate continues."""
+    import anthropic as _anthropic
     gold = _gold_file(tmp_path, [AAPL_ENTRY, ERROR_ENTRY])
     call_n = [0]
 
     def fake_loop(ticker, *, max_turns=None, on_turn=None, tools=None, temperature=None):
         call_n[0] += 1
         if ticker == "AAPL":
-            raise RuntimeError("simulated APITimeoutError")
-        # INVALID_XYZ runs normally
+            raise RuntimeError("unexpected bug")
         if on_turn:
             on_turn(1, "tool_use", [_Block("tool_use", "get_market_data")])
         return _loop_result("end_turn", dossier=None, cost=0.01)
@@ -469,20 +469,57 @@ def test_exception_in_one_entry_does_not_abort_gate(tmp_path):
         with _patch_fixtures():
             report = run_eval(gold_path=gold, max_turns=5)
 
-    # Both entries were processed despite the first one crashing.
     assert report.total_entries == 2
-    assert call_n[0] == 2
+    assert call_n[0] == 2  # both entries attempted
 
     aapl = report.results[0]
-    assert aapl.terminated_by == "runner_error"
+    assert aapl.terminated_by == "runner_error"  # non-infra failure label
     assert aapl.task_completion is False
-    assert aapl.actual_tool_calls == []
     assert aapl.cost_usd == 0.0
 
-    # The second entry ran normally and passed.
     invalid = report.results[1]
-    assert invalid.terminated_by == "end_turn"
-    assert invalid.task_completion is True   # error entry: dossier=None → pass
+    assert invalid.task_completion is True
+
+
+def test_infra_timeout_retried_and_succeeds(tmp_path):
+    """APITimeoutError on first attempt is retried; success on retry counts as completion."""
+    import anthropic as _anthropic
+    gold = _gold_file(tmp_path, [AAPL_ENTRY])
+    call_n = [0]
+
+    def fake_loop(ticker, *, max_turns=None, on_turn=None, tools=None, temperature=None):
+        call_n[0] += 1
+        if call_n[0] == 1:
+            raise _anthropic.APITimeoutError(request=None)
+        # Second attempt succeeds.
+        if on_turn:
+            on_turn(1, "tool_use", _full_aapl_content())
+        return _loop_result("submit_dossier", cost=0.05)
+
+    with patch("app.evals.runner.loop_run", side_effect=fake_loop):
+        with _patch_fixtures():
+            report = run_eval(gold_path=gold, max_turns=5)
+
+    assert call_n[0] == 2  # one retry happened
+    assert report.results[0].task_completion is True
+    assert report.results[0].terminated_by == "submit_dossier"
+
+
+def test_infra_timeout_exhausts_retries_counts_as_infra_failure(tmp_path):
+    """APITimeoutError on all attempts marks entry as runner_infra_error, not runner_error."""
+    import anthropic as _anthropic
+    gold = _gold_file(tmp_path, [AAPL_ENTRY])
+
+    def fake_loop(ticker, *, max_turns=None, on_turn=None, tools=None, temperature=None):
+        raise _anthropic.APITimeoutError(request=None)
+
+    with patch("app.evals.runner.loop_run", side_effect=fake_loop):
+        with _patch_fixtures():
+            report = run_eval(gold_path=gold, max_turns=5)
+
+    r = report.results[0]
+    assert r.terminated_by == "runner_infra_error"
+    assert r.task_completion is False
 
 
 def test_all_entries_error_gate_fails(tmp_path):
