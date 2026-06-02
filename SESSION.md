@@ -4,84 +4,92 @@
 
 ## Sesión actual
 
-**Sesión:** block-H
-**Estado:** gate_pending (PR #9 abierta, gate eval-gate verde)
-**Fecha apertura:** 2026-06-01
+**Sesión:** release-v1.0.0
+**Estado:** pr_open (PR #14 abierta, pendiente code-review y merge humano)
+**Fecha apertura:** 2026-06-02
 **Última actualización:** 2026-06-02
 
 ## Objetivo de la sesión
 
-Implementar Spec 07 (Evals en CI como gate de PR) y Spec 08 (Set de evaluación del agente): set de comportamiento en `evals/gold.jsonl`, fixtures de datos de mercado + web_search + web_fetch, runner de evals con métricas de gate en eval mode (server tools sustituidas por client tools fixturizadas), y workflow de GitHub Actions que bloquea el merge si las métricas caen por debajo del umbral.
+Cierre operativo del repo para la release v1.0.0. Sin features nuevas. Verificación integral (pytest, eval, redteam, research end-to-end, cost), preparación de artefactos de documentación (README, CHANGELOG, RELEASE_NOTES), security review final, y apertura de PR.
 
 ## Próxima acción concreta
 
-Merge (squash) de PR #9 (`feat/evals-ci`) a `main` y tag `08-block-H` (acción humana). El gate eval-gate está verde (run 26807268026 SUCCESS, 13/13, $0.44).
+- **Acción humana inmediata:** merge squash de PR #14 (`chore/release-v1`) a `main`, tag `v1.0.0`, GitHub Release con `RELEASE_NOTES_v1.0.0.md` como cuerpo, y zip de distribución:
+
+```bash
+git tag -s v1.0.0 -m "chore(release): v1.0.0"
+git push origin v1.0.0
+
+git archive --format=zip --prefix=company-research-agent-v1.0.0/ v1.0.0 \
+  -o company-research-agent-v1.0.0.zip
+```
 
 ## Pendientes en esta sesión
 
-- [ ] Merge (squash) de la PR #9 a `main` y tag `08-block-H` (acción humana).
-- [ ] (Deuda, block-I) **Suite de tests y redteam no corren en CI**: `pytest` y `python -m app.redteam.run --ci` solo se ejecutan en local. Tras el bypass del clasificador L3 en eval mode, el CI no tiene red de seguridad automática ante regresiones del guardrail. Pendiente: añadir jobs `unit-tests` y `redteam` al workflow de PR. Anotado en `.github/workflows/evals.yml`.
-- [ ] (Deuda, block-I) **Afinar el prompt del clasificador Haiku** para distinguir *reporte de datos de mercado* (hechos descriptivos) de *recomendación de inversión* (verdicto explícito). Ver incidente FP-001 en `specs/04-guardrails.md`.
-- [ ] (Deuda, block-I) **Job nocturno end-to-end**: evaluación live sin fixtures (web_search y web_fetch contra URLs reales). El gate de PR usa eval mode con fixtures; el job nocturno medirá comportamiento real con datos vivos.
+- [ ] Merge squash de PR #14 a `main` y tag `v1.0.0` (acción humana).
+- [ ] GitHub Release con `RELEASE_NOTES_v1.0.0.md` como cuerpo (acción humana).
+- [ ] Zip de distribución con `git archive` (acción humana).
+- [ ] (Deuda post-v1.0.0) **Suite de tests y redteam no corren en CI**: pendiente añadir jobs `unit-tests` y `redteam` al workflow de PR.
+- [ ] (Deuda post-v1.0.0) **Afinar el prompt del clasificador Haiku**: incidente FP-001 en `specs/04-guardrails.md`.
+- [ ] (Deuda post-v1.0.0) **Job nocturno end-to-end**: eval sin fixtures contra URLs reales.
 
 ## Completado en esta sesión
 
-- [x] **`evals/gold.jsonl`** (13 entradas firmadas): set de comportamiento anotado con dos lotes en paralelo (`gold-annotator` A y B). Cobertura: USA large-cap ×6, USA mid-cap ×1, europea completa ×1, datos parciales ×3, tickers inexistentes ×2. Firmado humano.
-- [x] **`evals/fixtures/`** (39 ficheros): market data (13), web_search (13), web_fetch (13). Fixtures ricos: ≥4 resultados de búsqueda con hechos y fechas explícitas. Tickers inexistentes con fixture de error y resultados vacíos.
-- [x] **`backend/app/tools/inventory.py`** — `EVAL_TOOLS`: versiones client-tool de web_search y web_fetch con descriptions escritas para el modelo. `code_execution` omitido en eval (nunca en `expected_tool_calls`).
-- [x] **`backend/app/agent/loop.py`** — parámetros `tools` y `temperature` opcionales en `run()`. No-breaking: todos los callers existentes obtienen el comportamiento por defecto.
-- [x] **`backend/app/evals/runner.py`**: eval mode completo. Dispatch extendido (market data + web_search + web_fetch via fixtures). Guardrail L3 bypaseado en eval (fuente de inestabilidad: clasificador Haiku con su propio non-determinismo). Retry de infra: `APITimeoutError`/`APIConnectionError` → hasta 2 reintentos antes de marcar `runner_infra_error` (distinguido de `runner_error`, fallo de comportamiento). Preflight ruidoso para los tres tipos de fixture. `EVAL_TEMPERATURE=0.0`. Umbrales: task_completion ≥ 92% (≡ 12/13), tool_use_accuracy ≥ 80%, cost ≤ budget. `EvalReport` incluye `thresholds` y booleans por métrica para que el JS del workflow no hardcodee umbrales.
-- [x] **`backend/tests/evals/test_eval_runner.py`** (25 tests): includes tests para el retry de infra (intento + éxito, agotamiento), separación behaviour vs infra errors, wiring de EVAL_TOOLS y temperature.
-- [x] **`.github/workflows/evals.yml`**: `AGENT_TIMEOUT_S: 300`, `AGENT_MAX_RETRIES: 1`. Umbrales leídos del JSON report. Deuda CI anotada en comentario.
-- [x] **Fixes del code-review**: `parents[3]`, fixture faltante lanza error antes de primer API call, thresholds en JSON, cost gate `>=`, descriptions de EVAL_TOOLS escritas.
-- [x] **Verificación gate bloquea**: PR #10 (`test/eval-gate-blocks`) con threshold=1.01 → eval-gate falló (exit 1, run 26808493987) → merge bloqueado. PR descartada.
-- [x] **Gate verde en PR #9**: run 26807268026 SUCCESS, 13/13, tool_use_accuracy 100%, mean_cost $0.044.
-- [x] **`specs/04-guardrails.md`**: incidente FP-001 registrado (clasificador Haiku bloqueando comparaciones precio/52-semanas en dossiers válidos).
-- [x] **Suite**: **107 passed** (82 existentes + 25 del eval runner).
+- [x] **Verificación integral de release**:
+  - `pytest`: 107 passed.
+  - `redteam gate`: 24/24 PASS, 100% block rate, exit 0.
+  - Eval set (13 entradas): task_completion 100%, tool_use_accuracy 100%, mean_cost $0.044.
+  - Research end-to-end (AAPL): 2 turnos, $0.069, dossier Pydantic válido.
+  - Security review: cero vulnerabilidades, cero secretos en historial git ni en ficheros tracked.
+- [x] **`.env.example` corregido**: `AGENT_TIMEOUT_S` 30 → 180 s (30 s era insuficiente para web_search en vivo; el CI sobreescribía a 300 s pero el ejemplo inducía a error en clone limpio).
+- [x] **README operativo final**: quickstart desde clone limpio, métricas alcanzadas (v1.0.0), estructura del repo, deudas post-v1.0.0.
+- [x] **CHANGELOG `[1.0.0]`**: entrada con verificaciones de release.
+- [x] **RELEASE_NOTES_v1.0.0.md**: notas de release completas y comandos para el tag + zip.
+- [x] **ADR-007**: estado actualizado con datos reales de calibración (p95 turnos=4, mean_cost=$0.043).
+- [x] **specs/06-serving-metrics.md**: estado actualizado a "aceptada" con nota de deuda post-v1.0.0.
+- [x] **.gitignore**: excluir `backend/eval-report.json` (artefacto generado).
+- [x] **DECISIONS.md + ADRs**: revisados; 13 ADRs, todos "aceptado".
+- [x] **PR #14 (`chore/release-v1`) abierta**.
 
 ## Subagentes usados en esta sesión
 
-- **`gold-annotator` × 2** (lotes A y B, en paralelo): anotaron las 13 entradas del set. Borrador JSONL producido por los subagentes; firmado humano antes de integrar.
+- **`redteam-runner`**: ejecutó el gate determinista offline (24/24 PASS, 100% block rate). Sin llamadas al modelo.
 
 ## Blockers
 
-- **Guardrail Haiku demasiado agresivo**: clasificador L3 bloqueó dossiers válidos (AAPL, MSFT, NVDA, TSLA, BRK-B) en corridas de eval porque el modelo computó comparaciones precio/52-semanas desde los market data fixtures. Resuelto bypassando el clasificador en eval mode. Incidente documentado en `specs/04-guardrails.md` como FP-001.
-- **`APITimeoutError` en CI**: web_search como server tool bloqueaba la respuesta HTTP >120s. Resuelto sustituyendo server tools por client tools con fixtures (EVAL_TOOLS) + timeout 300s + max_retries=1 + retry por entrada.
+- **`AGENT_TIMEOUT_S=30` en `.env`**: el runner local de SHOP (background) agotó el timeout en turn 2 porque web_search server-side tardó más de 30 s. AAPL con override 180 s completó sin problemas. Fix aplicado en `.env.example`; el `.env` local del usuario necesita actualización manual.
 
 ## Decisiones tomadas en esta sesión
 
-- **Server tools como client tools en eval**: web_search y web_fetch se reemplazan por client tools homónimas en eval mode (mismo `name`, sin `type`, con `input_schema`). El modelo genera el mismo `tool_use` block; el runner sirve fixtures. Único mecanismo que permite interceptar y fixturizar server tools sin mockear la respuesta HTTP completa.
-- **Bypass del guardrail L3 en eval**: el gate mide comportamiento del agente (tool selection, dossier quality); el guardrail tiene su propia test suite. Incluyéndolo en el gate se introduce non-determinismo del clasificador Haiku. Mismo patrón que `conftest.py` autouse en tests unitarios.
-- **Retry de infra separado de fallo de comportamiento**: `APITimeoutError`/`APIConnectionError` → `runner_infra_error` (retriable, transient); otros errores → `runner_error` (no retriable, indicates a bug). El log distingue claramente el origen.
-- **`TASK_COMPLETION_THRESHOLD = 0.92`**: con 13 entradas, pasa si ≥12/13 completan (12/13 = 0.923 > 0.92); falla si ≤11/13 (11/13 = 0.846 < 0.92). Tolera exactamente 1 entry fallida sin bloquear el merge.
+- `AGENT_TIMEOUT_S` corregido a 180 s en `.env.example`: valor mínimo razonable para ejecuciones locales con web_search. El CI de evals usaba 300 s como override, haciendo el ejemplo inconsistente con la realidad.
+- `eval-report.json` excluido del tracking en `.gitignore`: artefacto generado que cambia en cada corrida, no tiene valor histórico versionado.
 
 ## Coste de la sesión
 
-- ~$4–5 USD total estimado: 3 corridas locales completas (~$1.4), 4 corridas CI completas en PR #9 (~$2.3), 1 corrida CI de prueba en PR #10 (~$0.6). Los tests del runner mockean el loop; el gasto es de corridas reales del agente en CI y local para calibrar.
-
-## Notas de handoff
-
-- El gate eval-gate ya está verde en PR #9. La siguiente acción es humana: merge (squash) + tag `08-block-H`.
-- El workflow en CI tarda ~7-8 min para 13 entradas. Cost por corrida CI: ~$0.55-0.60.
-- EVAL_TOOLS y los fixtures de web_search/web_fetch son la pieza nueva clave. Si se añade una entry al gold set: crear los 3 fixtures correspondientes o el preflight lanzará `FileNotFoundError` antes de gastar tokens.
-- El incidente FP-001 del guardrail está en `specs/04-guardrails.md`. Para producción: afinar el prompt del clasificador para no bloquear comparaciones de datos de mercado descriptivos.
+- ~$0.63 USD total estimado:
+  - Eval set completo (13 entradas): ~$0.57 (mean $0.044 × 13).
+  - Research AAPL end-to-end: $0.069.
+  - Redteam gate: $0.00 (determinista, sin API).
 
 ## Comandos útiles ahora
 
 ```bash
-cd backend
+# Verificar el estado de la PR
+gh pr view 14
 
-# Correr el gate en local (necesita ANTHROPIC_API_KEY en .env)
-uv run python -m app.evals.runner --max-turns 8
+# Tras el merge humano: crear el tag y la release
+git tag -s v1.0.0 -m "chore(release): v1.0.0"
+git push origin v1.0.0
 
-# Solo tests del runner (sin API)
-uv run pytest tests/evals/test_eval_runner.py -v
+# Generar el zip de distribución
+git archive --format=zip --prefix=company-research-agent-v1.0.0/ v1.0.0 \
+  -o company-research-agent-v1.0.0.zip
 
-# Suite completa (sin API)
-uv run pytest -q
+# Próximas sesiones (post-v1.0.0): ver deudas en README.md y CHANGELOG [1.0.0]
 ```
 
 ## Gate de revisión
 
-- **Criterio:** 107 tests verdes; gate eval-gate pasa en CI con 13/13 entradas; gate bloquea confirmado con PR #10; guardrail FP-001 documentado. Gate de este bloque: **code-review en PR #9**.
-- **Resultado:** eval-gate run 26807268026 SUCCESS (13/13, task_completion 100%, tool_use_accuracy 100%, mean_cost $0.044). Gate bloquea confirmado (run 26808493987 FAILURE con threshold=1.01).
+- **Criterio:** 107 tests verdes; eval-gate 13/13; redteam 24/24; research AAPL completo; security review limpio; PR #14 abierta.
+- **Resultado:** todos los checks PASS. Gate de este bloque: **code-review en PR #14**.
