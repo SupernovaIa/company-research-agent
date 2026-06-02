@@ -1,19 +1,24 @@
 {
   "results": [
     {
-      "title": "Tesla Q4 2025 Deliveries: 495,570 Vehicles; Annual Total 1.79 Million",
+      "title": "Tesla Q4 2025 Deliveries: 495,570 Vehicles; Full Year 1.79 Million",
       "url": "https://ir.tesla.com/news-releases/news-release-details/tesla-vehicle-production-deliveries-and-deployments-fourth",
-      "snippet": "Tesla delivered 495,570 vehicles in Q4 2025, up 8% from Q4 2024, recovering from a weaker Q3. Full-year 2025 deliveries reached 1.79 million vehicles. Model Y remained the best-selling electric vehicle globally. Tesla also deployed 11.0 GWh of energy storage products in Q4, up 243% year-over-year, with Megapack as the primary product."
+      "snippet": "Tesla delivered 495,570 vehicles in Q4 2025, up 8% year-over-year, recovering from a weaker Q3. Full-year 2025 deliveries reached 1.79 million vehicles. Model Y remained the best-selling electric vehicle globally. Tesla also deployed 11.0 GWh of energy storage in Q4, up 243% year-over-year, with Megapack as the primary product."
     },
     {
-      "title": "Tesla Full Self-Driving v13 Launch: 7 Million Miles Autonomously Driven Per Day",
-      "url": "https://www.reuters.com/technology/tesla-fsd-v13-progress-2026-01-10/",
-      "snippet": "Tesla's Full Self-Driving (FSD) system version 13 logged over 7 million autonomous miles per day globally as of January 2026. CEO Elon Musk announced that unsupervised FSD is now available in select US cities, with broader rollout planned for mid-2026. Tesla has over 6 million vehicles in its fleet capable of FSD, representing a significant data advantage for AI training."
+      "title": "Tesla Launches Robotaxi Service in Austin on June 1, 2026; Supervised FSD Expands Nationwide",
+      "url": "https://www.reuters.com/technology/tesla-robotaxi-austin-launch-2026-06-01/",
+      "snippet": "Tesla launched a limited robotaxi service in Austin, Texas, on June 1, 2026, operating a fleet of 25 Model Y vehicles equipped with Full Self-Driving v13. Rides are available to a waitlist of verified users via the Tesla app. CEO Elon Musk called it 'the beginning of the autonomous revolution.' Tesla plans to expand to other US cities in Q3 2026, pending regulatory approval in each state."
     },
     {
-      "title": "Tesla Energy Business Hits Inflection: Megapack Revenue Surpasses $3 Billion in 2025",
-      "url": "https://www.bloomberg.com/news/articles/2026-01-29/tesla-energy-storage-2025",
-      "snippet": "Tesla's energy generation and storage segment generated over $3 billion in revenue in 2025, making it an increasingly significant part of Tesla's business. Megapack production at the Lathrop Gigafactory reached 40 GWh annualised capacity. Tesla also deployed 7 GW of new Supercharger stalls in 2025, expanding its network to over 65,000 stalls globally."
+      "title": "Tesla Optimus Robot Gen 2 Begins Limited Production; 1,000 Units Shipped to Factories",
+      "url": "https://www.bloomberg.com/news/articles/2026-04-15/tesla-optimus-production-factories",
+      "snippet": "Tesla shipped the first 1,000 Optimus Gen 2 humanoid robots to its own Gigafactories in April 2026 for internal manufacturing tasks. CEO Elon Musk said Optimus will eventually be Tesla's largest revenue driver, exceeding vehicle revenue. The robot costs approximately $30,000 to manufacture and Tesla plans to sell externally starting in 2027 at a price below $25,000."
+    },
+    {
+      "title": "Tesla Q1 2026 Earnings: Revenue $22.3 Billion, Automotive Gross Margin Recovers to 17.8%",
+      "url": "https://ir.tesla.com/news-releases/news-release-details/tesla-q1-2026-financial-results",
+      "snippet": "Tesla reported Q1 2026 revenue of $22.3 billion on April 22, 2026, up 5% year-over-year. Automotive gross margin recovered to 17.8%, up from 14.6% in Q1 2025, driven by cost reductions on Model 3 and Model Y and lower raw material costs. The company launched a new entry-level Model Y in March 2026 priced at $34,990 in the US. Energy storage deployments were 9.4 GWh in Q1 2026."
     }
   ]
 }
