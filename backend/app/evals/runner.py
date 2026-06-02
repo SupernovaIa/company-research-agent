@@ -85,7 +85,14 @@ WEB_FETCH_FIXTURES_DIR = FIXTURES_DIR / "web_fetch"
 EVAL_TEMPERATURE = 0.0
 
 # Gate thresholds (Spec 07).
-TASK_COMPLETION_THRESHOLD = 0.85
+#
+# TASK_COMPLETION_THRESHOLD = 0.92 with 13 gold-set entries means:
+#   pass  when ≥12/13 complete  (12/13 = 0.923 > 0.92)
+#   fail  when ≤11/13 complete  (11/13 = 0.846 < 0.92)
+# This tolerates exactly one entry failing (infra error, model regression on
+# one ticker) without blocking the merge.  Calibrated against a confirmed
+# 13/13 baseline run; recalibrate if the gold set size changes.
+TASK_COMPLETION_THRESHOLD = 0.92
 TOOL_ACCURACY_THRESHOLD = 0.80
 
 # Per-entry turn limit for eval runs (keeps cost bounded).
