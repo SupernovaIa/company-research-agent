@@ -1,9 +1,32 @@
 """Eval dataset runner (Spec 07, Spec 08).
 
-Loads evals/gold.jsonl, runs each entry through the loop with fixtures for
-get_market_data (prevents yfinance failures from breaking the gate), tracks
-tool calls via the on_turn callback, computes three gate metrics, and
-optionally exits non-zero when the gate fails.
+Loads evals/gold.jsonl, runs each entry through the loop in **eval mode**, and
+computes three gate metrics: task_completion_rate, tool_use_accuracy, and
+mean_cost_usd.  Optionally exits non-zero when a gate threshold is missed.
+
+## Eval mode vs production
+
+In production the loop uses Anthropic server tools (web_search, web_fetch,
+code_execution) that Anthropic executes inline — their results arrive already
+resolved in the same HTTP response and cannot be intercepted by the client.
+
+In eval mode these are replaced by semantically-equivalent **client tools**
+(EVAL_TOOLS) with the same ``name``.  The model generates the same
+``tool_use`` blocks; the runner intercepts them and returns pre-recorded
+fixtures from ``evals/fixtures/web_search/<TICKER>.json`` and
+``evals/fixtures/web_fetch/<TICKER>.json``.  get_market_data likewise uses
+its fixture from ``evals/fixtures/<TICKER>.json``.
+
+This makes the external data layer fully deterministic so a yfinance or web
+outage cannot break the gate.  The **model is still called live** — that is
+what the gate measures: which tools the model chooses to call and whether it
+produces a valid dossier from the fixture content.
+
+The model is called at temperature=0 to reduce between-run variance and
+keep gate thresholds stable across re-runs.
+
+End-to-end evaluation against live data (web_search and web_fetch calling real
+URLs, no fixtures) is reserved for the scheduled nightly job, not the PR gate.
 
 Usage (from backend/):
     uv run python -m app.evals.runner            # print report
@@ -23,12 +46,19 @@ from unittest.mock import patch
 from app.agent.loop import run as loop_run
 from app.config import settings
 from app.tools.client import ToolResult, dispatch_client_tool as _orig_dispatch
+from app.tools.inventory import EVAL_TOOLS
 
 logger = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 GOLD_JSONL = _REPO_ROOT / "evals" / "gold.jsonl"
 FIXTURES_DIR = _REPO_ROOT / "evals" / "fixtures"
+WEB_SEARCH_FIXTURES_DIR = FIXTURES_DIR / "web_search"
+WEB_FETCH_FIXTURES_DIR = FIXTURES_DIR / "web_fetch"
+
+# Temperature used for all eval runs. 0 = greedy decoding; minimises
+# between-run variance so gate thresholds remain stable (refinement #4).
+EVAL_TEMPERATURE = 0.0
 
 # Gate thresholds (Spec 07).
 TASK_COMPLETION_THRESHOLD = 0.85
@@ -85,15 +115,33 @@ def load_gold_set(path: Path | None = None) -> list[dict]:
 def _load_fixture(ticker: str) -> dict:
     """Return the pre-recorded get_market_data payload for *ticker*.
 
-    Raises FileNotFoundError if the fixture is absent.  Every gold-set ticker
-    must have a fixture so the gate is fully deterministic (Spec 07): falling
-    through to live yfinance in CI would make the gate non-reproducible.
+    Raises FileNotFoundError if the fixture is absent — called by the preflight
+    check; individual per-entry loads are covered by _load_web_* helpers below.
     """
     path = FIXTURES_DIR / f"{ticker}.json"
     if not path.exists():
         raise FileNotFoundError(
-            f"Missing fixture for ticker '{ticker}': {path}\n"
-            "Create evals/fixtures/{ticker}.json before adding a gold entry."
+            f"Missing get_market_data fixture for '{ticker}': {path}"
+        )
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _load_web_search_fixture(ticker: str) -> dict:
+    """Return the pre-recorded web_search payload for *ticker*."""
+    path = WEB_SEARCH_FIXTURES_DIR / f"{ticker}.json"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Missing web_search fixture for '{ticker}': {path}"
+        )
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _load_web_fetch_fixture(ticker: str) -> dict:
+    """Return the pre-recorded web_fetch payload for *ticker*."""
+    path = WEB_FETCH_FIXTURES_DIR / f"{ticker}.json"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Missing web_fetch fixture for '{ticker}': {path}"
         )
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -118,23 +166,31 @@ def run_eval(
     gold_path: Path | None = None,
     max_turns: int = EVAL_MAX_TURNS,
 ) -> EvalReport:
-    """Run all gold-set entries and return an EvalReport.
+    """Run all gold-set entries in eval mode and return an EvalReport.
 
-    get_market_data is served from pre-recorded fixtures so yfinance or network
-    failures don't break the CI gate. The model and server-side tools
-    (web_search, web_fetch, code_execution) run live.
+    All three external data sources (get_market_data, web_search, web_fetch)
+    are served from pre-recorded fixtures so network failures cannot break the
+    gate.  The model is called live at temperature=0 via EVAL_TOOLS (client
+    tool equivalents of the production server tools).  See module docstring.
     """
     entries = load_gold_set(gold_path)
 
-    # Pre-flight: verify all fixtures exist before spending any API tokens.
-    # Missing fixtures would cause a silent fallthrough to live yfinance,
-    # breaking the CI gate determinism guarantee (Spec 07, review finding #3).
-    missing = [e["ticker"] for e in entries if not (FIXTURES_DIR / f"{e['ticker']}.json").exists()]
+    # Pre-flight: verify all three fixture types exist for every gold-set ticker
+    # before spending any API tokens (Spec 07 determinism guarantee).
+    missing: list[str] = []
+    for e in entries:
+        t = e["ticker"]
+        if not (FIXTURES_DIR / f"{t}.json").exists():
+            missing.append(f"{t} (get_market_data)")
+        if not (WEB_SEARCH_FIXTURES_DIR / f"{t}.json").exists():
+            missing.append(f"{t} (web_search)")
+        if not (WEB_FETCH_FIXTURES_DIR / f"{t}.json").exists():
+            missing.append(f"{t} (web_fetch)")
     if missing:
         raise FileNotFoundError(
-            f"Missing fixtures for tickers: {missing}\n"
-            "Create evals/fixtures/<TICKER>.json for each gold entry "
-            "before running the eval gate."
+            f"Missing fixtures: {missing}\n"
+            "Create the corresponding files under evals/fixtures/ before "
+            "running the eval gate."
         )
 
     cost_cap = settings.agent_budget_usd
@@ -150,16 +206,34 @@ def run_eval(
         def on_turn(turn, stop_reason, content, _log=actual_calls):
             _log.extend(_tool_names_from_content(content))
 
-        fixture = _load_fixture(ticker)
+        mkt_fixture = _load_fixture(ticker)
+        ws_fixture = _load_web_search_fixture(ticker)
+        wf_fixture = _load_web_fetch_fixture(ticker)
 
-        def _patched_dispatch(name, input_data, _fix=fixture):
+        def _patched_dispatch(
+            name, input_data,
+            _mkt=mkt_fixture, _ws=ws_fixture, _wf=wf_fixture,
+        ):
+            # All external data is served from fixtures (Spec 07 determinism).
+            # submit_dossier falls through to the real dispatcher for Pydantic
+            # validation — that is intentional and must stay live.
             if name == "get_market_data":
-                return ToolResult(json_response=_fix)
+                return ToolResult(json_response=_mkt)
+            if name == "web_search":
+                return ToolResult(json_response=_ws)
+            if name == "web_fetch":
+                return ToolResult(json_response=_wf)
             return _orig_dispatch(name, input_data)
 
         with patch("app.agent.loop.dispatch_client_tool", side_effect=_patched_dispatch):
             try:
-                loop_result = loop_run(ticker, max_turns=max_turns, on_turn=on_turn)
+                loop_result = loop_run(
+                    ticker,
+                    max_turns=max_turns,
+                    on_turn=on_turn,
+                    tools=EVAL_TOOLS,
+                    temperature=EVAL_TEMPERATURE,
+                )
             except Exception as exc:
                 # An APITimeoutError, connection error, or any unexpected exception
                 # in a single entry must not abort the whole gate run.  Count the

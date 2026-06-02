@@ -26,6 +26,24 @@ from app.evals.runner import (
     run_eval,
 )
 
+# Minimal fixture payloads used by the mock helpers below.
+_MKT_FIXTURE = {
+    "price": 100.0, "currency": "USD",
+    "source": "Yahoo Finance", "as_of": "2026-06-01T00:00:00+00:00",
+}
+_WS_FIXTURE = {"results": [{"title": "Test", "url": "https://example.com", "snippet": "A test."}]}
+_WF_FIXTURE = {"url": "https://example.com", "title": "Test article", "content": "Test content."}
+
+
+def _patch_fixtures():
+    """Context-manager that stubs all three fixture loaders."""
+    from contextlib import ExitStack
+    stack = ExitStack()
+    stack.enter_context(patch("app.evals.runner._load_fixture", return_value=_MKT_FIXTURE))
+    stack.enter_context(patch("app.evals.runner._load_web_search_fixture", return_value=_WS_FIXTURE))
+    stack.enter_context(patch("app.evals.runner._load_web_fetch_fixture", return_value=_WF_FIXTURE))
+    return stack
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -185,7 +203,7 @@ def test_run_eval_all_pass(tmp_path):
     """All entries behave correctly → gate pass."""
     gold = _gold_file(tmp_path, [AAPL_ENTRY, ERROR_ENTRY])
 
-    def fake_loop(ticker, *, max_turns=None, on_turn=None):
+    def fake_loop(ticker, *, max_turns=None, on_turn=None, tools=None, temperature=None):
         if ticker == "AAPL":
             if on_turn:
                 on_turn(1, "tool_use", _full_aapl_content())
@@ -196,7 +214,7 @@ def test_run_eval_all_pass(tmp_path):
         return _loop_result("end_turn", dossier=None, cost=0.01)
 
     with patch("app.evals.runner.loop_run", side_effect=fake_loop):
-        with patch("app.evals.runner._load_fixture", return_value={"price": 100.0, "currency": "USD", "source": "Yahoo Finance", "as_of": "2026-06-01T00:00:00+00:00"}):
+        with _patch_fixtures():
             report = run_eval(gold_path=gold, max_turns=5)
 
     assert report.total_entries == 2
@@ -211,7 +229,7 @@ def test_run_eval_gate_fail_completion(tmp_path):
     gold = _gold_file(tmp_path, [AAPL_ENTRY] * 5)
     call_n = [0]
 
-    def fake_loop(ticker, *, max_turns=None, on_turn=None):
+    def fake_loop(ticker, *, max_turns=None, on_turn=None, tools=None, temperature=None):
         call_n[0] += 1
         if on_turn:
             on_turn(1, "tool_use", _full_aapl_content())
@@ -220,7 +238,7 @@ def test_run_eval_gate_fail_completion(tmp_path):
         return _loop_result("hard_limit", dossier=None, cost=0.05)
 
     with patch("app.evals.runner.loop_run", side_effect=fake_loop):
-        with patch("app.evals.runner._load_fixture", return_value={"price": 100.0, "currency": "USD", "source": "Yahoo Finance", "as_of": "2026-06-01T00:00:00+00:00"}):
+        with _patch_fixtures():
             report = run_eval(gold_path=gold, max_turns=5)
 
     assert report.task_completion_rate == pytest.approx(0.2)
@@ -232,14 +250,14 @@ def test_run_eval_gate_fail_tool_accuracy(tmp_path):
     """Tool accuracy below threshold → gate fails."""
     gold = _gold_file(tmp_path, [AAPL_ENTRY] * 5)
 
-    def fake_loop(ticker, *, max_turns=None, on_turn=None):
+    def fake_loop(ticker, *, max_turns=None, on_turn=None, tools=None, temperature=None):
         # Only submit_dossier — missing get_market_data and web_search.
         if on_turn:
             on_turn(1, "tool_use", [_Block("tool_use", "submit_dossier")])
         return _loop_result("submit_dossier", cost=0.03)
 
     with patch("app.evals.runner.loop_run", side_effect=fake_loop):
-        with patch("app.evals.runner._load_fixture", return_value={"price": 100.0, "currency": "USD", "source": "Yahoo Finance", "as_of": "2026-06-01T00:00:00+00:00"}):
+        with _patch_fixtures():
             report = run_eval(gold_path=gold, max_turns=5)
 
     assert report.tool_use_accuracy == 0.0
@@ -252,13 +270,13 @@ def test_run_eval_gate_fail_cost(tmp_path, monkeypatch):
     gold = _gold_file(tmp_path, [AAPL_ENTRY])
     monkeypatch.setattr("app.evals.runner.settings.agent_budget_usd", 0.50)
 
-    def fake_loop(ticker, *, max_turns=None, on_turn=None):
+    def fake_loop(ticker, *, max_turns=None, on_turn=None, tools=None, temperature=None):
         if on_turn:
             on_turn(1, "tool_use", _full_aapl_content())
         return _loop_result("submit_dossier", cost=999.0)
 
     with patch("app.evals.runner.loop_run", side_effect=fake_loop):
-        with patch("app.evals.runner._load_fixture", return_value={"price": 100.0, "currency": "USD", "source": "Yahoo Finance", "as_of": "2026-06-01T00:00:00+00:00"}):
+        with _patch_fixtures():
             report = run_eval(gold_path=gold, max_turns=5)
 
     assert report.gate_pass is False
@@ -269,13 +287,13 @@ def test_error_entry_complete_when_no_dossier(tmp_path):
     """task_completion_expected=False entry passes when dossier is None."""
     gold = _gold_file(tmp_path, [ERROR_ENTRY])
 
-    def fake_loop(ticker, *, max_turns=None, on_turn=None):
+    def fake_loop(ticker, *, max_turns=None, on_turn=None, tools=None, temperature=None):
         if on_turn:
             on_turn(1, "tool_use", [_Block("tool_use", "get_market_data")])
         return _loop_result("end_turn", dossier=None, cost=0.01)
 
     with patch("app.evals.runner.loop_run", side_effect=fake_loop):
-        with patch("app.evals.runner._load_fixture", return_value={"price": 100.0, "currency": "USD", "source": "Yahoo Finance", "as_of": "2026-06-01T00:00:00+00:00"}):
+        with _patch_fixtures():
             report = run_eval(gold_path=gold, max_turns=5)
 
     assert report.results[0].task_completion is True
@@ -285,7 +303,7 @@ def test_error_entry_fails_when_dossier_emitted(tmp_path):
     """task_completion_expected=False entry fails if a dossier is emitted."""
     gold = _gold_file(tmp_path, [ERROR_ENTRY])
 
-    def fake_loop(ticker, *, max_turns=None, on_turn=None):
+    def fake_loop(ticker, *, max_turns=None, on_turn=None, tools=None, temperature=None):
         if on_turn:
             on_turn(1, "tool_use", [
                 _Block("tool_use", "get_market_data"),
@@ -295,7 +313,7 @@ def test_error_entry_fails_when_dossier_emitted(tmp_path):
         return _loop_result("submit_dossier", dossier=_make_dossier(), cost=0.05)
 
     with patch("app.evals.runner.loop_run", side_effect=fake_loop):
-        with patch("app.evals.runner._load_fixture", return_value={"price": 100.0, "currency": "USD", "source": "Yahoo Finance", "as_of": "2026-06-01T00:00:00+00:00"}):
+        with _patch_fixtures():
             report = run_eval(gold_path=gold, max_turns=5)
 
     assert report.results[0].task_completion is False
@@ -307,7 +325,7 @@ def test_run_eval_empty_gold(tmp_path):
     gold.write_text("", encoding="utf-8")
 
     with patch("app.evals.runner.loop_run"):
-        with patch("app.evals.runner._load_fixture", return_value={"price": 100.0, "currency": "USD", "source": "Yahoo Finance", "as_of": "2026-06-01T00:00:00+00:00"}):
+        with _patch_fixtures():
             report = run_eval(gold_path=gold)
 
     assert report.total_entries == 0
@@ -318,13 +336,13 @@ def test_run_eval_entry_result_fields(tmp_path):
     """EntryResult carries all expected fields."""
     gold = _gold_file(tmp_path, [AAPL_ENTRY])
 
-    def fake_loop(ticker, *, max_turns=None, on_turn=None):
+    def fake_loop(ticker, *, max_turns=None, on_turn=None, tools=None, temperature=None):
         if on_turn:
             on_turn(1, "tool_use", _full_aapl_content())
         return _loop_result("submit_dossier", cost=0.07, turns=4)
 
     with patch("app.evals.runner.loop_run", side_effect=fake_loop):
-        with patch("app.evals.runner._load_fixture", return_value={"price": 100.0, "currency": "USD", "source": "Yahoo Finance", "as_of": "2026-06-01T00:00:00+00:00"}):
+        with _patch_fixtures():
             report = run_eval(gold_path=gold, max_turns=5)
 
     r = report.results[0]
@@ -356,27 +374,72 @@ def test_gold_jsonl_resolves_to_repo_root():
 
 
 # ---------------------------------------------------------------------------
-# Tests: missing fixture → loud error (review finding #3)
+# Tests: missing fixture → loud error (review finding #3, extended to 3 types)
 # ---------------------------------------------------------------------------
 
-def test_missing_fixture_raises(tmp_path, monkeypatch):
-    """run_eval raises FileNotFoundError when a gold entry has no fixture file."""
-    gold = _gold_file(tmp_path, [AAPL_ENTRY])
-    # Point FIXTURES_DIR to an empty directory so AAPL has no fixture.
-    empty = tmp_path / "fixtures"
-    empty.mkdir()
-    monkeypatch.setattr("app.evals.runner.FIXTURES_DIR", empty)
+def _empty_fixture_dirs(tmp_path: Path):
+    """Return (fixtures_dir, ws_dir, wf_dir) all empty."""
+    d = tmp_path / "fixtures"
+    d.mkdir()
+    ws = d / "web_search"
+    ws.mkdir()
+    wf = d / "web_fetch"
+    wf.mkdir()
+    return d, ws, wf
 
-    with pytest.raises(FileNotFoundError, match="Missing fixtures for tickers"):
+
+def test_missing_market_data_fixture_raises(tmp_path, monkeypatch):
+    """Missing get_market_data fixture → FileNotFoundError before API calls."""
+    gold = _gold_file(tmp_path, [AAPL_ENTRY])
+    d, ws, wf = _empty_fixture_dirs(tmp_path)
+    # Provide web_search and web_fetch fixtures but NOT market data.
+    (ws / "AAPL.json").write_text("{}")
+    (wf / "AAPL.json").write_text("{}")
+    monkeypatch.setattr("app.evals.runner.FIXTURES_DIR", d)
+    monkeypatch.setattr("app.evals.runner.WEB_SEARCH_FIXTURES_DIR", ws)
+    monkeypatch.setattr("app.evals.runner.WEB_FETCH_FIXTURES_DIR", wf)
+
+    with pytest.raises(FileNotFoundError, match="Missing fixtures"):
+        run_eval(gold_path=gold)
+
+
+def test_missing_web_search_fixture_raises(tmp_path, monkeypatch):
+    """Missing web_search fixture → FileNotFoundError before API calls."""
+    gold = _gold_file(tmp_path, [AAPL_ENTRY])
+    d, ws, wf = _empty_fixture_dirs(tmp_path)
+    (d / "AAPL.json").write_text("{}")
+    # web_search missing; web_fetch present
+    (wf / "AAPL.json").write_text("{}")
+    monkeypatch.setattr("app.evals.runner.FIXTURES_DIR", d)
+    monkeypatch.setattr("app.evals.runner.WEB_SEARCH_FIXTURES_DIR", ws)
+    monkeypatch.setattr("app.evals.runner.WEB_FETCH_FIXTURES_DIR", wf)
+
+    with pytest.raises(FileNotFoundError, match="Missing fixtures"):
+        run_eval(gold_path=gold)
+
+
+def test_missing_web_fetch_fixture_raises(tmp_path, monkeypatch):
+    """Missing web_fetch fixture → FileNotFoundError before API calls."""
+    gold = _gold_file(tmp_path, [AAPL_ENTRY])
+    d, ws, wf = _empty_fixture_dirs(tmp_path)
+    (d / "AAPL.json").write_text("{}")
+    (ws / "AAPL.json").write_text("{}")
+    # web_fetch missing
+    monkeypatch.setattr("app.evals.runner.FIXTURES_DIR", d)
+    monkeypatch.setattr("app.evals.runner.WEB_SEARCH_FIXTURES_DIR", ws)
+    monkeypatch.setattr("app.evals.runner.WEB_FETCH_FIXTURES_DIR", wf)
+
+    with pytest.raises(FileNotFoundError, match="Missing fixtures"):
         run_eval(gold_path=gold)
 
 
 def test_fixture_error_fires_before_api_calls(tmp_path, monkeypatch):
-    """The fixture check must fail before any loop_run call is made."""
+    """The preflight check must fail before any loop_run call is made."""
     gold = _gold_file(tmp_path, [AAPL_ENTRY])
-    empty = tmp_path / "fixtures"
-    empty.mkdir()
-    monkeypatch.setattr("app.evals.runner.FIXTURES_DIR", empty)
+    d, ws, wf = _empty_fixture_dirs(tmp_path)
+    monkeypatch.setattr("app.evals.runner.FIXTURES_DIR", d)
+    monkeypatch.setattr("app.evals.runner.WEB_SEARCH_FIXTURES_DIR", ws)
+    monkeypatch.setattr("app.evals.runner.WEB_FETCH_FIXTURES_DIR", wf)
 
     with patch("app.evals.runner.loop_run") as mock_loop:
         with pytest.raises(FileNotFoundError):
@@ -393,7 +456,7 @@ def test_exception_in_one_entry_does_not_abort_gate(tmp_path):
     gold = _gold_file(tmp_path, [AAPL_ENTRY, ERROR_ENTRY])
     call_n = [0]
 
-    def fake_loop(ticker, *, max_turns=None, on_turn=None):
+    def fake_loop(ticker, *, max_turns=None, on_turn=None, tools=None, temperature=None):
         call_n[0] += 1
         if ticker == "AAPL":
             raise RuntimeError("simulated APITimeoutError")
@@ -403,10 +466,7 @@ def test_exception_in_one_entry_does_not_abort_gate(tmp_path):
         return _loop_result("end_turn", dossier=None, cost=0.01)
 
     with patch("app.evals.runner.loop_run", side_effect=fake_loop):
-        with patch("app.evals.runner._load_fixture",
-                   return_value={"price": 100.0, "currency": "USD",
-                                 "source": "Yahoo Finance",
-                                 "as_of": "2026-06-01T00:00:00+00:00"}):
+        with _patch_fixtures():
             report = run_eval(gold_path=gold, max_turns=5)
 
     # Both entries were processed despite the first one crashing.
@@ -429,14 +489,37 @@ def test_all_entries_error_gate_fails(tmp_path):
     """If every entry raises, gate reports 0% completion and fails."""
     gold = _gold_file(tmp_path, [AAPL_ENTRY, AAPL_ENTRY])
 
-    with patch("app.evals.runner.loop_run",
-               side_effect=RuntimeError("timeout")):
-        with patch("app.evals.runner._load_fixture",
-                   return_value={"price": 100.0, "currency": "USD",
-                                 "source": "Yahoo Finance",
-                                 "as_of": "2026-06-01T00:00:00+00:00"}):
+    with patch("app.evals.runner.loop_run", side_effect=RuntimeError("timeout")):
+        with _patch_fixtures():
             report = run_eval(gold_path=gold, max_turns=5)
 
     assert report.total_entries == 2
     assert report.task_completion_rate == 0.0
     assert report.gate_pass is False
+
+
+# ---------------------------------------------------------------------------
+# Tests: eval mode wiring — EVAL_TOOLS and temperature passed to loop_run
+# ---------------------------------------------------------------------------
+
+def test_loop_run_receives_eval_tools_and_temperature(tmp_path):
+    """run_eval must pass EVAL_TOOLS and temperature=0 to loop_run."""
+    from app.tools.inventory import EVAL_TOOLS
+    from app.evals.runner import EVAL_TEMPERATURE
+
+    gold = _gold_file(tmp_path, [AAPL_ENTRY])
+    captured: dict = {}
+
+    def fake_loop(ticker, *, max_turns=None, on_turn=None, tools=None, temperature=None):
+        captured["tools"] = tools
+        captured["temperature"] = temperature
+        if on_turn:
+            on_turn(1, "tool_use", _full_aapl_content())
+        return _loop_result("submit_dossier", cost=0.05)
+
+    with patch("app.evals.runner.loop_run", side_effect=fake_loop):
+        with _patch_fixtures():
+            run_eval(gold_path=gold, max_turns=5)
+
+    assert captured["tools"] is EVAL_TOOLS
+    assert captured["temperature"] == EVAL_TEMPERATURE
