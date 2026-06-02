@@ -241,19 +241,20 @@ def run_eval(
         ws_fixture = _load_web_search_fixture(ticker)
         wf_fixture = _load_web_fetch_fixture(ticker)
 
-        def _patched_dispatch(
-            name, input_data,
-            _mkt=mkt_fixture, _ws=ws_fixture, _wf=wf_fixture,
-        ):
+        # Dict-based dispatch: makes the "which tools are stubbed" contract
+        # visible as data; adding a 4th stubbed tool is a one-line dict entry.
+        _fixture_map = {
+            "get_market_data": mkt_fixture,
+            "web_search": ws_fixture,
+            "web_fetch": wf_fixture,
+        }
+
+        def _patched_dispatch(name, input_data, _map=_fixture_map):
             # All external data is served from fixtures (Spec 07 determinism).
             # submit_dossier falls through to the real dispatcher for Pydantic
             # validation — that is intentional and must stay live.
-            if name == "get_market_data":
-                return ToolResult(json_response=_mkt)
-            if name == "web_search":
-                return ToolResult(json_response=_ws)
-            if name == "web_fetch":
-                return ToolResult(json_response=_wf)
+            if name in _map:
+                return ToolResult(json_response=_map[name])
             return _orig_dispatch(name, input_data)
 
         with patch("app.agent.loop.dispatch_client_tool", side_effect=_patched_dispatch), \
@@ -322,6 +323,29 @@ def run_eval(
                     ))
                     loop_result = None
                     break
+            else:
+                # for-else: the loop exhausted all attempts via continue without
+                # any break — the range formula and the condition should prevent
+                # this, but guard against future drift between EVAL_ENTRY_MAX_RETRIES
+                # and the range bound so no entry is silently dropped.
+                logger.error(
+                    "[%s] retry loop exhausted without terminal state — "
+                    "counting as failed entry (infra, not behaviour)",
+                    ticker,
+                )
+                results.append(EntryResult(
+                    ticker=ticker,
+                    category=entry["category"],
+                    task_completion_expected=task_completion_expected,
+                    terminated_by="runner_infra_error",
+                    task_completion=False,
+                    tool_use_accurate=False,
+                    actual_tool_calls=[],
+                    expected_tool_calls=sorted(expected_calls),
+                    cost_usd=0.0,
+                    turns=0,
+                ))
+                loop_result = None
 
             if loop_result is None:
                 continue

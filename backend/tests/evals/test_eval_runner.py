@@ -7,6 +7,7 @@ computation, gate threshold logic, and JSONL parsing.
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,14 +36,13 @@ _WS_FIXTURE = {"results": [{"title": "Test", "url": "https://example.com", "snip
 _WF_FIXTURE = {"url": "https://example.com", "title": "Test article", "content": "Test content."}
 
 
+@contextmanager
 def _patch_fixtures():
     """Context-manager that stubs all three fixture loaders."""
-    from contextlib import ExitStack
-    stack = ExitStack()
-    stack.enter_context(patch("app.evals.runner._load_fixture", return_value=_MKT_FIXTURE))
-    stack.enter_context(patch("app.evals.runner._load_web_search_fixture", return_value=_WS_FIXTURE))
-    stack.enter_context(patch("app.evals.runner._load_web_fetch_fixture", return_value=_WF_FIXTURE))
-    return stack
+    with patch("app.evals.runner._load_fixture", return_value=_MKT_FIXTURE), \
+         patch("app.evals.runner._load_web_search_fixture", return_value=_WS_FIXTURE), \
+         patch("app.evals.runner._load_web_fetch_fixture", return_value=_WF_FIXTURE):
+        yield
 
 
 # ---------------------------------------------------------------------------
