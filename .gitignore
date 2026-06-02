@@ -27,6 +27,9 @@ node_modules/
 .idea/
 .vscode/
 
+# Artefactos generados del eval runner
+backend/eval-report.json
+
 # Ruido del SO
 .DS_Store
 Thumbs.db
