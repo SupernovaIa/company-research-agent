@@ -1,0 +1,19 @@
+{
+  "results": [
+    {
+      "title": "ASML Q3 2025 Results: Net Sales €7.5 Billion; 2025 Guidance Reiterated",
+      "url": "https://www.asml.com/en/investors/quarterly-results/2025/q3-2025-results/",
+      "snippet": "ASML reported Q3 2025 net sales of €7.5 billion, in line with guidance. EUV system revenue was €4.6 billion, accounting for 62% of sales, driven by High-NA EUV shipments to Intel and TSMC. Gross margin was 50.8%. Net income was €2.08 billion. Order intake was €2.63 billion. Management reiterated 2025 full-year guidance of €30-35 billion revenue and maintained its 2030 revenue scenario of €44-60 billion."
+    },
+    {
+      "title": "ASML High-NA EUV Machines Ship to TSMC and Intel: 2nm Chip Manufacturing Enabled",
+      "url": "https://www.reuters.com/technology/asml-high-na-euv-tsmc-intel-2025-10-15/",
+      "snippet": "ASML has delivered High-NA EUV lithography systems — priced at approximately €350 million each — to TSMC and Intel for 2nm and below manufacturing processes. The High-NA EUV machine, the most complex manufactured object on Earth, offers a 60% increase in resolution versus standard EUV. TSMC plans to use High-NA for 2nm mass production beginning in 2027. ASML is the only company in the world capable of producing EUV systems."
+    },
+    {
+      "title": "ASML China Revenue Declines Following US Export Restrictions; Dutch Government Aligns",
+      "url": "https://www.ft.com/content/asml-china-export-controls-2025-10-16",
+      "snippet": "ASML's China revenue declined to approximately 12% of total sales in Q3 2025, down from over 25% two years ago, following tightened export controls by the Dutch government at US request. The restrictions primarily affect deep-UV immersion lithography systems critical for China's advanced logic production. ASML's management sees China exposure declining to 10-15% of revenue over the medium term as AI-driven demand from TSMC, Samsung, and Intel fills the gap."
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "results": [
+    {
+      "title": "Nvidia Q3 FY2026 Results: Revenue $35.1 Billion, Data Center Up 112% YoY",
+      "url": "https://investor.nvidia.com/news-releases/news-release-details/nvidia-announces-financial-results-third-quarter-fiscal-2026/",
+      "snippet": "Nvidia reported Q3 FY2026 revenue of $35.1 billion, up 94% year-over-year and 17% sequentially. Data Center revenue reached $30.8 billion (+112% YoY), driven by Blackwell GPU architecture ramp. Gaming revenue was $3.3 billion (+15% YoY). Gross margin was 74.6%. GAAP EPS was $0.78; non-GAAP EPS was $0.81."
+    },
+    {
+      "title": "Nvidia Blackwell GPU Demand Exceeds Supply; Hyperscalers Commit Multi-Year Capex",
+      "url": "https://www.reuters.com/technology/nvidia-blackwell-supply-demand-2025-11-20/",
+      "snippet": "Nvidia's Blackwell B200 and GB200 GPUs face demand that vastly exceeds current production capacity, according to CEO Jensen Huang. Microsoft, Google, Amazon, and Meta have collectively committed over $300 billion in AI infrastructure capital expenditure for 2025-2026, with Nvidia GPUs as the primary compute platform. TSMC is ramping CoWoS advanced packaging to meet Blackwell production targets."
+    },
+    {
+      "title": "Nvidia CUDA Ecosystem Locks In Enterprise AI Developers; Software Moat Widens",
+      "url": "https://www.wsj.com/articles/nvidia-cuda-software-moat-2025-12-10/",
+      "snippet": "Nvidia's CUDA parallel computing platform has over 5 million registered developers globally, creating a deep software moat that makes switching to rival AI accelerators costly. Nvidia's NIM microservices and AI Enterprise software stack generate recurring subscription revenue estimated at $2.5 billion annually. The company's networking business (InfiniBand, Ethernet) reached $3.1 billion in Q3 FY2026."
+    }
+  ]
+}

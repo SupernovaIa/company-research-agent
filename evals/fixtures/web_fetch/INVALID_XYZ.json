@@ -1,0 +1,5 @@
+{
+  "url": "https://finance.example.com/INVALID_XYZ",
+  "title": "404 Not Found",
+  "content": "No company information found for ticker INVALID_XYZ. This ticker does not correspond to any listed company on any major stock exchange."
+}

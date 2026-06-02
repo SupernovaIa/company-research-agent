@@ -1,0 +1,19 @@
+{
+  "results": [
+    {
+      "title": "SAP Q3 2025 Results: Cloud Revenue Grows 27% to €4.35 Billion; Raises Outlook",
+      "url": "https://www.sap.com/investors/en/reports-and-publications/2025/q3-2025-results.html",
+      "snippet": "SAP SE reported Q3 2025 cloud revenue of €4.35 billion, up 27% at constant currencies. Cloud ERP Suite revenue grew 34% to €3.89 billion. Current cloud backlog (CCB) reached €15.4 billion, up 25%. Total revenue was €8.48 billion, up 10%. Operating profit (IFRS) was €1.47 billion. SAP raised its 2025 full-year guidance and reaffirmed its 2025 cloud revenue target of €17-17.3 billion."
+    },
+    {
+      "title": "SAP S/4HANA Cloud Migration Reaches 28,000 Customers; AI Copilot Embedded in ERP",
+      "url": "https://www.ft.com/content/sap-s4hana-cloud-migration-2025-10-22",
+      "snippet": "SAP has migrated 28,000 customers to S/4HANA Cloud as enterprises accelerate moves from on-premise ERP to cloud. CEO Christian Klein said: 'Every SAP solution will be AI-first.' SAP Business AI, embedded across the ERP suite, now has over 400 AI scenarios, including Joule copilot for finance, HR, and procurement workflows. SAP's total addressable market in AI business applications is estimated at €130 billion."
+    },
+    {
+      "title": "SAP Acquires WalkMe for $1.5 Billion to Boost Digital Adoption Platform",
+      "url": "https://www.reuters.com/technology/sap-acquires-walkme-2024-06-05/",
+      "snippet": "SAP completed its acquisition of WalkMe, a digital adoption platform, for $1.5 billion in cash in September 2024. WalkMe's technology helps enterprise users navigate complex software, accelerating SAP S/4HANA adoption. The deal strengthens SAP's business transformation capabilities and expands its employee experience portfolio alongside SuccessFactors."
+    }
+  ]
+}
