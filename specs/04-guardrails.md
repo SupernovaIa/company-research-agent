@@ -58,3 +58,18 @@ Validación: checklist de red team (Spec 09) con bloqueo ≥ 90% y cada capa blo
 
 - Umbral de presupuesto por ejecución: calibrar con la distribución de coste real (p95 + margen) en la Fase 4 (block-G).
 - Backend de rate limiting (Upstash Redis vs middleware simple): decidir según volumen esperado.
+
+## Incidentes conocidos del clasificador L3
+
+### FP-001 · Bloqueo de comparaciones precio/52-semanas en dossiers de research (2026-06-02)
+
+**Observado en:** block-H, corridas del eval gate sobre tickers AAPL, MSFT, NVDA, TSLA, BRK-B.
+
+**Síntoma:** El clasificador Haiku bloqueó dossiers estructuralmente válidos (superaban la validación Pydantic y contenían solo hechos citados) porque el modelo incluyó comparaciones del tipo "el precio actual está un 10,6% por debajo del máximo de 52 semanas" derivadas de los campos `week52_high`/`week52_low` del market data fixture. El clasificador los interpretó como "comparative valuation framing" que constituye una recomendación implícita de inversión.
+
+**Causa raíz:** El clasificador L3 no distingue entre *citar datos de mercado estructurados* (lo que hace el agente) e *interpretar esos datos para dar un consejo de inversión* (lo que el guardrail debe bloquear). Las comparaciones precio/52-semanas son un falso positivo: el agente los extrae del proveedor de datos y los presenta como hechos, no como análisis.
+
+**Mitigación en block-H:** El eval gate bypasea el clasificador L3 en eval mode (el clasificador tiene su propia batería de tests en la redteam suite). Ver `runner.py` y el comentario en `specs/07-evals-ci-gate.md`.
+
+**Deuda pendiente:** Afinar el prompt del clasificador para distinguir *reporte de datos de mercado* de *recomendación de inversión*. Las comparaciones precio/52-semanas, PE ratio y market cap son hechos descriptivos legítimos en un dossier de research; el threshold debería activarse solo cuando el texto emite un veredicto explícito (comprar/vender/mantener) o contiene proyecciones de precio objetivo.
+

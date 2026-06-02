@@ -1,5 +1,12 @@
 name: eval-gate
 
+# DEUDA TÉCNICA (block-I): la suite de tests unitarios y la batería de
+# redteam/seguridad NO corren en CI — solo en local con /redteam y pytest.
+# Tras el bypass del clasificador L3 en eval mode (block-H), el CI no tiene
+# red de seguridad automática ante regresiones del guardrail. Pendiente:
+# añadir un job `unit-tests` (uv run pytest -q --ignore=tests/evals) y un job
+# `redteam` (uv run python -m app.redteam.run --ci) al workflow de PR.
+
 on:
   pull_request:
     branches: [main]
