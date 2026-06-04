@@ -8,6 +8,55 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
 
 ---
 
+## [1.0.1] - 2026-06-04
+
+### Corregido
+
+- **Costes inflados en Langfuse** (`backend/app/observability/tracer.py`,
+  `backend/app/agent/loop.py`): causa raíz identificada y corregida en dos commits.
+
+  **Causa raíz real** — dos bugs acumulados:
+
+  1. Los tests de pytest que ejercen el límite de presupuesto usan
+     `_FakeUsage(input_tokens=10_000_000, output_tokens=10_000_000)` para forzar
+     un coste artificialmente alto. El `Tracer` es un singleton inicializado con
+     las credenciales reales del `.env`. Al no estar aislado durante los tests,
+     enviaba spans reales a Langfuse Cloud con 10 M tokens de usage falso. El
+     servidor de Langfuse aplicaba sus precios correctos ($3/M, $15/M) y
+     almacenaba `costDetails = {input: $30, output: $150}` → **$180 por cada run
+     de pytest**. Cada ejecución de CI o `pytest tests/` generaba dos trazas de
+     $180 en el dashboard.
+
+  2. La instrumentación del tracer real tenía además tres errores menores que
+     habrían inflado futuros runs de producción: incluía la clave `"total"` en
+     `usage_details` (campo derivado, no dimensión), pasaba
+     `cost_details={"total": cost_usd}` en lugar de un desglose por dimensión
+     (dejando "input" y "output" expuestos al model pricing de Langfuse), y no
+     incluía el coste de tokens de caché en `_estimate_cost`.
+
+- **Aislamiento del tracer en tests** (`backend/tests/conftest.py`): fixture
+  `autouse` `_null_tracer` que blanquea las credenciales de Langfuse y llama a
+  `reset_tracer()` antes y después de cada test. Los tests ahora son herméticos
+  respecto a Langfuse Cloud.
+
+- **`_estimate_cost`** (`backend/app/agent/loop.py`): ahora incluye los tokens de
+  caché en el cálculo (cache_creation a $3.75/M, cache_read a $0.30/M) y devuelve
+  `(total, breakdown)` con desglose por dimensión para pasarlo a Langfuse.
+
+- **`record_turn`** (`backend/app/observability/tracer.py`): `model` movido a
+  `metadata` (elimina el lookup de model definition en Langfuse); `usage_details`
+  sin `"total"`; `cost_details` con desglose completo por dimensión.
+
+### Verificaciones
+
+- **pytest**: 83 passed (sin API, ~17 s).
+- **research end-to-end** (AAPL): 2 turnos, $0.2017, dossier Pydantic validado.
+- **totalCost Langfuse** (nueva traza AAPL): $0.2017 — alineado con `run.cost_usd`
+  y con el incremento real de la API de Anthropic.
+- **trazas de test**: ya no aparecen en Langfuse Cloud (tracer aislado).
+
+---
+
 ## [1.0.0] - 2026-06-02
 
 Primera release estable. Incluye todos los bloques A–H implementados y verificados.
