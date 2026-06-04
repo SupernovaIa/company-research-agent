@@ -63,12 +63,12 @@ class _RunTrace:
                     "tool_names": tool_names,
                 },
             )
-            # cost_details includes every key in usage_details plus "total".
-            # The "total" key populates calculatedTotalCost on the observation,
-            # which Langfuse sums to compute the trace-level totalCost and drives
-            # the "Cost by model" / "Cost by type" dashboard views.
-            # Covering all dimension keys overrides any model-definition pricing
-            # that Langfuse would otherwise apply.
+            # cost_details: dimension breakdown from _estimate_cost plus the
+            # Langfuse-specific "total" key.  "total" populates
+            # calculatedTotalCost on the observation, which Langfuse sums into
+            # the trace-level totalCost and drives "Cost by model" / "Cost by
+            # type" dashboard views.  Covering all dimension keys also overrides
+            # any model-definition-based pricing Langfuse might otherwise apply.
             gen.update(
                 usage_details={
                     "input": usage.input_tokens,
@@ -80,7 +80,7 @@ class _RunTrace:
                         usage, "cache_read_input_tokens", 0
                     ),
                 },
-                cost_details=cost_breakdown,
+                cost_details={**cost_breakdown, "total": cost_usd},
             )
             gen.end()
         except Exception:

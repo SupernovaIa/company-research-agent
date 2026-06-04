@@ -146,7 +146,7 @@ def test_estimate_cost_positive():
     assert breakdown["output"] == pytest.approx(15.0, rel=1e-3)
     assert breakdown["cache_creation_input_tokens"] == pytest.approx(0.0)
     assert breakdown["cache_read_input_tokens"] == pytest.approx(0.0)
-    assert breakdown["total"] == pytest.approx(18.0, rel=1e-3)
+    assert "total" not in breakdown  # "total" is added by record_turn, not here
 
 
 def test_estimate_cost_with_cache_tokens():
@@ -161,7 +161,7 @@ def test_estimate_cost_with_cache_tokens():
     assert breakdown["output"] == pytest.approx(1.50, rel=1e-3)
     assert breakdown["cache_creation_input_tokens"] == pytest.approx(0.75, rel=1e-3)
     assert breakdown["cache_read_input_tokens"] == pytest.approx(0.09, rel=1e-3)
-    assert breakdown["total"] == pytest.approx(3.84, rel=1e-3)
+    assert "total" not in breakdown
     assert total == pytest.approx(3.84, rel=1e-3)
 
 
