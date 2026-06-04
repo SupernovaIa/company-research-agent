@@ -51,24 +51,24 @@ class _RunTrace:
                 for b in response.content
                 if getattr(b, "type", None) == "tool_use"
             ]
-            # model is kept in metadata only — omitting it from start_observation
-            # prevents Langfuse from matching a model definition and applying its
-            # own per-token pricing on top of our explicit cost_details.
+            model_name = getattr(response, "model", "unknown")
             gen = self._root.start_observation(
                 name=f"turn_{turn}",
                 as_type="generation",
+                model=model_name,
                 metadata={
-                    "model": getattr(response, "model", "unknown"),
                     "stop_reason": response.stop_reason,
                     "turn": turn,
                     "cost_usd": cost_usd,
                     "tool_names": tool_names,
                 },
             )
-            # usage_details: no "total" key — it is a derived field, not an
-            # independent dimension, and having it triggers extra model pricing.
-            # cost_details covers every key in usage_details so model-based
-            # pricing is fully suppressed for all dimensions.
+            # cost_details includes every key in usage_details plus "total".
+            # The "total" key populates calculatedTotalCost on the observation,
+            # which Langfuse sums to compute the trace-level totalCost and drives
+            # the "Cost by model" / "Cost by type" dashboard views.
+            # Covering all dimension keys overrides any model-definition pricing
+            # that Langfuse would otherwise apply.
             gen.update(
                 usage_details={
                     "input": usage.input_tokens,

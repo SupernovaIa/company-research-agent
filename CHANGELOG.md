@@ -43,17 +43,29 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y 
   caché en el cálculo (cache_creation a $3.75/M, cache_read a $0.30/M) y devuelve
   `(total, breakdown)` con desglose por dimensión para pasarlo a Langfuse.
 
-- **`record_turn`** (`backend/app/observability/tracer.py`): `model` movido a
-  `metadata` (elimina el lookup de model definition en Langfuse); `usage_details`
-  sin `"total"`; `cost_details` con desglose completo por dimensión.
+- **`record_turn`** (`backend/app/observability/tracer.py`): `cost_details` con
+  desglose completo por dimensión incluyendo la clave `total`; `model` restaurado
+  en `start_observation` para poblar el panel "Cost by model" del dashboard.
+
+- **`totalCost = 0` en el dashboard** (`backend/app/observability/tracer.py`,
+  `backend/app/agent/loop.py`): `calculatedTotalCost` de cada generation se
+  puebla desde `costDetails.total`. Sin esa clave, Langfuse deja
+  `calculatedTotalCost = 0` aunque `calculatedInputCost` y
+  `calculatedOutputCost` estén correctos, y el `totalCost` de la traza queda
+  a cero. Añadir `total = sum(breakdown.values())` al breakdown y restaurar
+  `model` en `start_observation` resuelve tanto `totalCost` como "Cost by model".
 
 ### Verificaciones
 
-- **pytest**: 83 passed (sin API, ~17 s).
-- **research end-to-end** (AAPL): 2 turnos, $0.2017, dossier Pydantic validado.
-- **totalCost Langfuse** (nueva traza AAPL): $0.2017 — alineado con `run.cost_usd`
-  y con el incremento real de la API de Anthropic.
-- **trazas de test**: ya no aparecen en Langfuse Cloud (tracer aislado).
+- **pytest**: 83 passed (sin API, ~33 s).
+- **research end-to-end** (AAPL, `AGENT_TIMEOUT_S=180`): 2 turnos, $0.2199.
+- **`totalCost` Langfuse** (traza `05fffbf2`, leído de `/api/public/traces`):
+  `0.2199` — coincide con `run.cost_usd`.
+- **`calculatedTotalCost`** por turno (leído de `/api/public/observations`):
+  `0.0312 + 0.1886 = 0.2198` — sum = `totalCost` ✅
+- **`model = "claude-sonnet-4-6"`** presente en observations — "Cost by model"
+  poblado en el dashboard ✅
+- **Trazas nuevas durante pytest**: **0** (tracer aislado).
 
 ---
 

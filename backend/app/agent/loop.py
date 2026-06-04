@@ -85,8 +85,12 @@ def _build_tools_with_cache(tools: list[dict] | None = None) -> list[dict]:
 def _estimate_cost(usage: anthropic.types.Usage) -> tuple[float, dict[str, float]]:
     """Return (total_usd, per_dimension_breakdown) using Anthropic's rate card.
 
-    The breakdown uses the same keys as the usage_details we send to Langfuse so
-    that cost_details can fully suppress model-based pricing in Langfuse.
+    The breakdown includes a "total" key so that Langfuse populates
+    calculatedTotalCost on the generation (which drives totalCost at the trace
+    level and the "Cost by model" / "Cost by type" dashboard views).  Without
+    "total", calculatedTotalCost stays 0 even when per-dimension costs are set.
+    All keys match usage_details exactly so cost_details fully overrides any
+    model-definition-based pricing Langfuse might otherwise apply.
     """
     cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
     cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
@@ -96,7 +100,9 @@ def _estimate_cost(usage: anthropic.types.Usage) -> tuple[float, dict[str, float
         "cache_creation_input_tokens": cache_write * _COST_PER_MTOK_CACHE_WRITE / 1_000_000,
         "cache_read_input_tokens": cache_read * _COST_PER_MTOK_CACHE_READ / 1_000_000,
     }
-    return sum(breakdown.values()), breakdown
+    total = sum(breakdown.values())
+    breakdown["total"] = total
+    return total, breakdown
 
 
 def _extract_client_tool_uses(content: list) -> list:
