@@ -35,7 +35,13 @@ class _RunTrace:
         self._lf = lf
         self._root = root_span
 
-    def record_turn(self, turn: int, response: Any, cost_usd: float) -> None:
+    def record_turn(
+        self,
+        turn: int,
+        response: Any,
+        cost_usd: float,
+        cost_breakdown: dict[str, float],
+    ) -> None:
         if self._root is None:
             return
         try:
@@ -45,30 +51,36 @@ class _RunTrace:
                 for b in response.content
                 if getattr(b, "type", None) == "tool_use"
             ]
+            # model is kept in metadata only — omitting it from start_observation
+            # prevents Langfuse from matching a model definition and applying its
+            # own per-token pricing on top of our explicit cost_details.
             gen = self._root.start_observation(
                 name=f"turn_{turn}",
                 as_type="generation",
-                model=getattr(response, "model", "unknown"),
                 metadata={
+                    "model": getattr(response, "model", "unknown"),
                     "stop_reason": response.stop_reason,
                     "turn": turn,
                     "cost_usd": cost_usd,
                     "tool_names": tool_names,
                 },
             )
+            # usage_details: no "total" key — it is a derived field, not an
+            # independent dimension, and having it triggers extra model pricing.
+            # cost_details covers every key in usage_details so model-based
+            # pricing is fully suppressed for all dimensions.
             gen.update(
                 usage_details={
                     "input": usage.input_tokens,
                     "output": usage.output_tokens,
-                    "total": usage.input_tokens + usage.output_tokens,
                     "cache_creation_input_tokens": getattr(
                         usage, "cache_creation_input_tokens", 0
-                    ),
+                    ) or 0,
                     "cache_read_input_tokens": getattr(
                         usage, "cache_read_input_tokens", 0
-                    ),
+                    ) or 0,
                 },
-                cost_details={"total": cost_usd},
+                cost_details=cost_breakdown,
             )
             gen.end()
         except Exception:

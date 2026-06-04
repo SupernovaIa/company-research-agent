@@ -42,6 +42,8 @@ SOFT_TURN_LIMIT: int = max(1, HARD_TURN_LIMIT - 5)  # used by tests for assertio
 # Sonnet 4.6 rate card (USD per million tokens). Verify against the current card.
 _COST_PER_MTOK_IN = 3.00
 _COST_PER_MTOK_OUT = 15.00
+_COST_PER_MTOK_CACHE_WRITE = 3.75   # cache_creation_input_tokens (125 % of input)
+_COST_PER_MTOK_CACHE_READ = 0.30    # cache_read_input_tokens (10 % of input)
 
 _SYSTEM_PROMPT_PATH = (
     Path(__file__).resolve().parents[3] / "prompts" / "system_prompt_v1.md"
@@ -80,13 +82,21 @@ def _build_tools_with_cache(tools: list[dict] | None = None) -> list[dict]:
     return tool_list[:-1] + [last]
 
 
-def _estimate_cost(usage: anthropic.types.Usage) -> float:
-    # Cache-read tokens are billed at ~10% of regular input; treat as zero here
-    # for a conservative upper bound. Block-E can refine with the actual rate.
-    return (
-        usage.input_tokens * _COST_PER_MTOK_IN / 1_000_000
-        + usage.output_tokens * _COST_PER_MTOK_OUT / 1_000_000
-    )
+def _estimate_cost(usage: anthropic.types.Usage) -> tuple[float, dict[str, float]]:
+    """Return (total_usd, per_dimension_breakdown) using Anthropic's rate card.
+
+    The breakdown uses the same keys as the usage_details we send to Langfuse so
+    that cost_details can fully suppress model-based pricing in Langfuse.
+    """
+    cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
+    cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+    breakdown: dict[str, float] = {
+        "input": usage.input_tokens * _COST_PER_MTOK_IN / 1_000_000,
+        "output": usage.output_tokens * _COST_PER_MTOK_OUT / 1_000_000,
+        "cache_creation_input_tokens": cache_write * _COST_PER_MTOK_CACHE_WRITE / 1_000_000,
+        "cache_read_input_tokens": cache_read * _COST_PER_MTOK_CACHE_READ / 1_000_000,
+    }
+    return sum(breakdown.values()), breakdown
 
 
 def _extract_client_tool_uses(content: list) -> list:
@@ -225,9 +235,9 @@ def run(
                 create_kwargs["temperature"] = temperature
             response = client.messages.create(**create_kwargs)
 
-            turn_cost = _estimate_cost(response.usage)
+            turn_cost, cost_breakdown = _estimate_cost(response.usage)
             total_cost += turn_cost
-            run_trace.record_turn(turn, response, turn_cost)
+            run_trace.record_turn(turn, response, turn_cost, cost_breakdown)
 
             cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
             cache_created = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
