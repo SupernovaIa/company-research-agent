@@ -47,10 +47,15 @@ def _null_tracer(monkeypatch):
     test keeps tests hermetic.  reset_tracer() is the supported teardown hook
     documented in tracer.py.
     """
+    import app.config as _config_mod
     import app.observability.tracer as _tracer_mod
 
-    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "")
-    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "")
+    # Patch the already-instantiated pydantic-settings singleton directly.
+    # monkeypatch.setenv would only update os.environ, which pydantic-settings
+    # already read eagerly at Settings() construction time; the frozen attribute
+    # value on the existing object would not change.
+    monkeypatch.setattr(_config_mod.settings, "langfuse_public_key", "")
+    monkeypatch.setattr(_config_mod.settings, "langfuse_secret_key", "")
     _tracer_mod.reset_tracer()
     yield
     _tracer_mod.reset_tracer()

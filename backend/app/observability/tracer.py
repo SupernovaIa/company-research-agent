@@ -15,7 +15,7 @@ Usage inside the loop::
     tracer = get_tracer()
     with tracer.start(ticker) as run_trace:
         for turn in ...:
-            run_trace.record_turn(turn, response, cost_usd)
+            run_trace.record_turn(turn, response, cost_usd, cost_breakdown)
         run_trace.finish(terminated_by, cost_usd, turns)
 """
 
@@ -75,10 +75,10 @@ class _RunTrace:
                     "output": usage.output_tokens,
                     "cache_creation_input_tokens": getattr(
                         usage, "cache_creation_input_tokens", 0
-                    ) or 0,
+                    ),
                     "cache_read_input_tokens": getattr(
                         usage, "cache_read_input_tokens", 0
-                    ) or 0,
+                    ),
                 },
                 cost_details=cost_breakdown,
             )
